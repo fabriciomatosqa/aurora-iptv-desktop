@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+dist/
+build/
+installer_out/
+releases/
+*.spec
+*.db
+*.sqlite
+*.sqlite3
+*.m3u
+*.m3u8
+.env
+.env.*
+*.log

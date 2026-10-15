@@ -1,0 +1,66 @@
+name: AURORA IPTV Desktop - builds
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'aurora_desktop/**'
+      - 'tests/**'
+      - 'run.py'
+      - 'requirements*.txt'
+      - 'build_windows.ps1'
+      - 'build_linux.sh'
+      - 'installer_windows.iss'
+      - '.github/workflows/desktop-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test catalog
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements.txt pytest
+          python -m pytest tests -q
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Build EXE and installer
+        shell: pwsh
+        run: ./build_windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AURORA-IPTV-Windows-Setup
+          path: installer_out/*.exe
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install OS libraries
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libpulse0 libdbus-1-3
+      - name: Test catalog
+        run: |
+          python -m pip install -r requirements.txt pytest
+          python -m pytest tests -q
+      - name: Build DEB and portable TAR.GZ
+        run: bash build_linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AURORA-IPTV-Linux
+          path: |
+            releases/*.deb
+            releases/*.tar.gz
+          if-no-files-found: error
