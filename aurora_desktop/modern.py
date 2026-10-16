@@ -244,7 +244,7 @@ class MainWindow(legacy.MainWindow):
         brand = QLabel("AURORA IPTV")
         brand.setObjectName("brand")
         side.addWidget(brand)
-        side.addWidget(QLabel("DESKTOP  ·  v0.4.0"))
+        side.addWidget(QLabel("DESKTOP  ·  v0.5.0"))
         side.addSpacing(18)
         self.nav = {}
         for mode,title in [

@@ -1,5 +1,5 @@
 #define MyAppName "AURORA IPTV"
-#define MyAppVersion "0.4.0"
+#define MyAppVersion "0.5.0"
 #define MyAppExeName "AURORA-IPTV.exe"
 [Setup]
 AppId={{7E9AAB61-4913-4F3F-965F-3D7459381745}

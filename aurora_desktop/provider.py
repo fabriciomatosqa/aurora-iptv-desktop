@@ -20,7 +20,7 @@ CATEGORY_ACTIONS = (
 def _read_small_json(url: str, maximum: int = 4 * 1024 * 1024):
     with requests.get(url, stream=True, timeout=(8, 16), headers={
         "Accept": "application/json", "Accept-Encoding": "gzip",
-        "User-Agent": "AURORA-IPTV-Desktop/0.4",
+        "User-Agent": "AURORA-IPTV-Desktop/0.5",
     }) as resp:
         resp.raise_for_status()
         size = 0

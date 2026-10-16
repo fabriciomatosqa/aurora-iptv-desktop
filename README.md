@@ -1,6 +1,22 @@
-# AURORA IPTV — Desktop 0.4.0 beta
+# AURORA IPTV — Desktop 0.5.0 beta
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
+
+## Versão 0.5.0 — estabilidade e correções gerais
+
+Esta versão foi feita após uma auditoria geral do repositório. Consulte [a auditoria e suas limitações](docs/AUDIT_0_5.md).
+
+- Futebol: somente partidas associadas a canais reais da playlist; remove jogos há mais de 1h encerrados, evita duplicatas e exclui outras modalidades esportivas (como futebol americano).
+- Playlist: atualização aditiva, preservando itens anteriores quando novos conteúdos chegam; processo de download/importação continua atômico.
+- Categorias: migração SQLite v5 e reclassificação em segundo plano, para não bloquear a janela durante listas grandes.
+- Séries: cartazes oficiais consultados apenas para itens visíveis; rolagem por lote.
+- Continuar assistindo: episódios recentes agora iniciam reprodução, sem retornar indevidamente ao catálogo.
+- Reprodução: evita sobrescrever progresso de conteúdo concluído, melhora explicação de falhas de codec/rede/acesso.
+- Busca: procura dentro da classe inteira, não apenas subgrupo previamente selecionado.
+- Aparência: tela de espera com Aurora no lugar do painel preto.
+- Testes adicionados para esses fluxos no Windows e Linux.
+
+**Aviso importante:** não há ainda compatibilidade completa com todos os codecs, nem placares em tempo real/escudos no nível do Android. A versão é beta e exige teste em PC real.
 
 ## Versão 0.4.0 — classificação e identidade visual
 
