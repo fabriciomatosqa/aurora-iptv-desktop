@@ -1,17 +1,17 @@
-# AURORA IPTV Desktop 0.6.0 beta 7 — Edição Visual Aurora
+# AURORA IPTV Desktop 0.6.0 beta 8
 
-Redesenho completo do acabamento visual do Desktop, sem alterar as playlists, o banco de dados ou a atualização silenciosa que foi validada na beta.6.
+## Debian — atualização pelo próprio aplicativo
+- O AURORA encontra o pacote .deb da versão mais nova no GitHub Releases, sem navegar ao site.
+- Baixa o pacote completo internamente, com progresso, tamanho exato e validação SHA-256.
+- Na instalação Debian padrão, um auxiliar externo aguarda o fechamento do AURORA, solicita autenticação administrativa via PolicyKit (pkexec apt-get install) e reabre o aplicativo.
+- Quando PolicyKit não está disponível ou a edição é portátil, abre o arquivo .deb já baixado no gerenciador gráfico de pacotes do Linux.
+- Registros de diagnóstico ficam em ~/.cache/aurora-iptv/updates; não armazenamos senhas nem playlists.
+- Uma autorização de administrador pode ser solicitada pelo sistema, mas não há necessidade de acessar GitHub manualmente.
 
-- Sete ícones vetoriais personalizados, nítidos em telas de alta resolução: casinha, televisão, rolo de cinema, episódios, bola, estrela dourada e engrenagem.
-- Ícones do menu com cores coordenadas e Favoritos com uma estrela amarela preenchida.
-- Remove as faixas pretas de cabeçalhos e legendas; QLabel e suas variações passam a ter transparência onde apropriado.
-- Folha de estilos única que substitui a antiga em cada troca de tema, em vez de acumular regras, melhorando consistência e memória.
-- Painéis, controles, barras de rolagem, campos, listas e rodapé ganham cores azul-petróleo e bordas harmonizadas com a aurora boreal.
-- Capas temporárias mais elegantes, com símbolos específicos para canais ao vivo, filmes, séries e futebol.
-- Tela de espera do player adaptada automaticamente para temas escuro/claro.
-- Novos testes Qt sem interface gráfica verificam ícones, menu, integridade dos temas e fundos.
-- Corrige o teste externo do GitHub Actions que podia esbarrar no limite de requisições API (usa token da própria execução).
+## Windows e Linux — tela cheia
+- O botão deixa de usar QVideoWidget.setFullScreen(), que podia congelar a imagem, manter o áudio ou prender a interface.
+- A janela principal é ampliada sem desconectar/recriar o componente de vídeo.
+- O botão "Sair da tela cheia", Esc ou F11 restauram os painéis, a janela e os controles.
+- Mantém atualizador silencioso do Windows, favoritos e playlist.
 
-**Atualização de teste:** Se você já tem a versão 0.6.0-beta.6, abra **Atualizações → Verificar atualizações agora**, deixe **Beta e estável** selecionado e confirme a atualização para a beta.7. O AURORA deve baixar, fechar, instalar silenciosamente e reabrir sozinho. Os dados locais são mantidos.
-
-Versão beta. Não há alterações no mecanismo principal de streaming/EPG.
+**Teste:** no Linux beta.7 o atualizador antigo ainda abre o GitHub: instale esta beta.8 manualmente uma vez para ativar o novo mecanismo. A próxima beta.9 servirá para testar atualização beta.8 -> beta.9 dentro do AURORA. No Windows, atualize beta.7 -> beta.8 no menu.
