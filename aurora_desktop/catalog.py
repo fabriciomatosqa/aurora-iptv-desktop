@@ -415,11 +415,14 @@ class LibraryV2(Library):
             if details is None and not MATCH.search(name):
                 elem.clear()
                 continue
+            if details is None and category and not FOOTBALL.search(category+" "+title):
+                elem.clear()
+                continue
             if not name:
                 elem.clear()
                 continue
             if details is None and re.search(
-                r"(?i)\b(?:nfl|nba|basquete|rugby|ufc|futsal|volei|t[eê]nis)\b", title+" "+desc
+                r"(?i)\b(?:nfl|nba|basquete|rugby|ufc|futsal|volei|t[eê]nis)\b", title+" "+desc+" "+category
             ):
                 elem.clear()
                 continue
