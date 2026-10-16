@@ -13,7 +13,8 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 from . import __version__
 from .updater import (
     RELEASES_PAGE, Release, UpdateError, discover_release, download_verified,
-    install_supported, launch_windows_silent, take_update_status, record_update_step
+    install_supported, launch_windows_silent, linux_install_supported,
+    launch_linux_update, take_update_status, record_update_step
 )
 
 
@@ -147,11 +148,17 @@ class UpdateController(QObject):
         box.setTextFormat(Qt.TextFormat.PlainText)
         channel="Beta" if release.prerelease else "Estável"
         box.setText(f"Nova versão disponível: {release.version} ({channel})")
+        explanation = (
+            "No Debian, o pacote será baixado e verificado dentro do AURORA. "
+            "O sistema poderá solicitar autorização de administrador para instalar e reabrir o aplicativo."
+            if sys.platform.startswith("linux") else
+            "No Windows, a instalação será silenciosa depois da confirmação, "
+            "sem telas de Avançar e sem desinstalar a versão atual."
+        )
         box.setInformativeText(
             f"Versão instalada: {__version__}\n\n"
             "Deseja baixar a atualização agora?\n"
-            "No Windows, a instalação será silenciosa após você confirmar, "
-            "sem telas de Avançar e sem desinstalar a versão atual.")
+            + explanation)
         install=box.addButton("Atualizar agora",QMessageBox.ButtonRole.AcceptRole)
         box.addButton("Depois",QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(install)
@@ -159,12 +166,9 @@ class UpdateController(QObject):
         if box.clickedButton()!=install:
             self.settings.setValue("updates/dismissed_version",release.tag)
             return
-        if not install_supported():
-            QMessageBox.information(self.window,"Atualização no Linux ou versão de desenvolvimento",
-                "O instalador silencioso está disponível na versão Windows instalada.\n"
-                "No Linux, a instalação DEB pode exigir permissão administrativa. "
-                "Use o pacote adequado no GitHub Releases.")
-            QDesktopServices.openUrl(QUrl(release.url))
+        if not sys.platform.startswith("linux") and not install_supported():
+            QMessageBox.information(self.window, "Versão de desenvolvimento",
+                "A instalação integrada requer um AURORA Desktop instalado.")
             return
         self._download(release)
 
@@ -265,16 +269,43 @@ class UpdateController(QObject):
                 QMessageBox.information(self.window,"Atualização pronta",
                     "Conclua a importação ou a atualização do guia e tente novamente.")
                 return
-        try:
-            record_update_step("helper-launch", "Arquivo verificado; iniciando instalador externo", self._target_version)
-            launch_windows_silent(file, target_version=self._target_version)
-        except UpdateError as exc:
-            record_update_step("helper-failed", str(exc), self._target_version)
-            QMessageBox.warning(self.window,"AURORA IPTV · Instalação",str(exc))
-            return
-        self.window.status.setText("Download conferido. Fechando o AURORA para instalar e reabrir automaticamente.")
-        # Inno Setup per-user installer will replace the existing installation.
+        if sys.platform.startswith("linux"):
+            if not linux_install_supported():
+                self._open_local_deb(file,
+                    "Esta é uma edição portátil ou de desenvolvimento. "
+                    "O pacote .deb já foi baixado e será aberto no instalador do sistema.")
+                return
+            try:
+                record_update_step("helper-launch", "Pacote Debian verificado; solicitando instalação com PolicyKit",
+                                   self._target_version)
+                launch_linux_update(file, target_version=self._target_version)
+            except UpdateError as exc:
+                record_update_step("helper-failed", str(exc), self._target_version)
+                self._open_local_deb(file, str(exc))
+                return
+            self.window.status.setText("Pacote Debian verificado. Fechando para instalar e reabrir; autorize a operação se solicitado.")
+        else:
+            try:
+                record_update_step("helper-launch", "Arquivo verificado; iniciando instalador externo", self._target_version)
+                launch_windows_silent(file, target_version=self._target_version)
+            except UpdateError as exc:
+                record_update_step("helper-failed", str(exc), self._target_version)
+                QMessageBox.warning(self.window,"AURORA IPTV · Instalação",str(exc))
+                return
+            self.window.status.setText("Download conferido. Fechando o AURORA para instalar e reabrir automaticamente.")
         QTimer.singleShot(0,self.window.close)
+
+    def _open_local_deb(self, filename: Path, explanation: str):
+        """Fallback when PolicyKit is unavailable: use downloaded DEB locally."""
+        QMessageBox.information(
+            self.window, "Instalação Debian",
+            explanation + "\n\nO AURORA abrirá o arquivo .deb já baixado no gerenciador de pacotes. "
+            "Não é necessário acessar o GitHub. O sistema poderá pedir sua senha.")
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(filename))):
+            QMessageBox.warning(
+                self.window, "Instalação Debian",
+                "Não foi possível abrir o instalador gráfico de pacotes. "
+                "O arquivo verificado está salvo em:\n" + str(filename))
 
     def show_previous_result(self):
         result = take_update_status()
@@ -286,7 +317,8 @@ class UpdateController(QObject):
             QMessageBox.warning(self.window, "Falha na atualização",
                 "Não foi possível concluir a atualização silenciosa. "
                 f"Código: {result['exit_code']}. A instalação anterior foi preservada. "
-                "Confira o arquivo innosetup-update.log na pasta de atualizações.")
+                "Consulte o arquivo de diagnóstico da pasta de atualizações: "
+                + ("debian-update.log" if sys.platform.startswith("linux") else "innosetup-update.log") + ".")
         else:
             self.window.status.setText("Atualização não confirmada. Confira a versão instalada.")
 
