@@ -1,6 +1,13 @@
-# AURORA IPTV — Desktop 0.6.0-beta.8
+# AURORA IPTV — Desktop 0.6.0-beta.9
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
+
+## v0.6.0-beta.9 — teste de atualização integrada Debian
+
+- Atualização de teste **beta.8 → beta.9** via download do .deb diretamente no AURORA.
+- O GitHub Actions baixa um pacote Debian **real** das versões anteriores e valida tamanho completo, formato e SHA-256.
+- Se a autenticação PolicyKit for recusada ou indisponível, o AURORA oferece abrir o arquivo .deb já baixado no instalador gráfico local, sem acessar o GitHub.
+- Corrige a tela cheia tanto no Windows quanto no Linux sem criar outra superfície de vídeo. Sair: Esc, F11 ou botão.
 
 ## v0.6.0-beta.8 — atualizações Debian e tela cheia sem travar
 
