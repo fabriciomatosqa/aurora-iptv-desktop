@@ -158,11 +158,13 @@ class Library:
         db = sqlite3.connect(self.path, timeout=30)
         db.row_factory = sqlite3.Row
         db.execute('PRAGMA foreign_keys=ON')
-        db.execute('PRAGMA journal_mode=WAL')
+        db.execute('PRAGMA busy_timeout=30000')
         return db
 
     def _initialize(self) -> None:
         with self.connect() as db:
+            # Set WAL once, not on every reader connection or worker thread.
+            db.execute('PRAGMA journal_mode=WAL')
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS playlists (
                     id INTEGER PRIMARY KEY, name TEXT NOT NULL, source TEXT NOT NULL,
