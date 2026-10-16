@@ -837,11 +837,21 @@ class MainWindow(legacy.MainWindow):
         self.guide_thread = None
         self.guide_worker = None
 
+    def _import_active(self):
+        if self.thread is None or not self.thread.isRunning():
+            self._import_target = self.playlist_id
+        super()._import_active()
+
     def _import_ok(self,count):
+        target = getattr(self, "_import_target", None)
+        self._import_target = None
+        if target is not None:
+            self._indexed.add(target)
         super()._import_ok(count)
-        if self.playlist_id is not None:
-            self._indexed.add(self.playlist_id)
-        self._refresh()
+
+    def _import_failed(self,message):
+        self._import_target = None
+        super()._import_failed(message)
 
     def closeEvent(self,event):
         if self.index_thread and self.index_thread.isRunning():
