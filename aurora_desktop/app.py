@@ -451,7 +451,7 @@ class MainWindow(QMainWindow):
         self.video_title.setText(item['title'])
         self.pending_resume = self.library.get_progress(self.playlist_id, item['key']) * 1000 if item.get('kind') != 'live' else 0
         url = item['url']
-        source = QUrl.fromLocalFile(url) if Path(url).is_absolute() and not urlsplit(url).scheme else QUrl(url)
+        source = QUrl.fromLocalFile(url) if Path(url).is_absolute() and urlsplit(url).scheme not in ('http', 'https') else QUrl(url)
         self.player.setSource(source)
         self.player.play()
         self.play.setText('Ⅱ Pausar')
