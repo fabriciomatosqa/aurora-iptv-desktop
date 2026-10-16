@@ -13,7 +13,28 @@ from aurora_desktop.updater import (
     RELEASES_API, ReleaseAsset, UpdateError, discover_release, download_verified,
     launch_linux_update, linux_install_supported,
 )
-from tests.test_updater import FakeClient, FakeResponse
+class FakeResponse:
+    def __init__(self, payload, url):
+        self.payload, self.url = payload, url
+    def raise_for_status(self):
+        return None
+    def json(self):
+        return self.payload
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        return False
+    def iter_content(self, chunk_size=131072):
+        data=self.payload
+        for i in range(0,len(data),chunk_size):
+            yield data[i:i+chunk_size]
+
+
+class FakeClient:
+    def __init__(self, response):
+        self.response=response
+    def get(self, url, **kwargs):
+        return self.response
 
 
 def _deb_release(tag: str):
