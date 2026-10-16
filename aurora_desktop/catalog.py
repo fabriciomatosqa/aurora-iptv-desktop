@@ -18,7 +18,7 @@ import requests
 
 from .core import ATTR, Library, playlist_lines, kind_of, episode_info, parse_extinf
 from .android_rules import normalized, movie_category, football_details
-from .provider import get_provider_category_kinds
+from .provider import get_provider_category_kinds, get_provider_series_posters
 
 GENRES = (
     ("Ação", r"\ba[cç][aã]o\b|\baction\b"),
@@ -232,6 +232,11 @@ class LibraryV2(Library):
                     kind TEXT NOT NULL,
                     PRIMARY KEY (playlist_id,normalized_name)
                 );
+                CREATE TABLE IF NOT EXISTS provider_series_posters (
+                    playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+                    normalized_title TEXT NOT NULL, cover TEXT NOT NULL,
+                    PRIMARY KEY (playlist_id,normalized_title)
+                );
             """)
             fcols = {r["name"] for r in db.execute("PRAGMA table_info(football_events)")}
             if "broadcast" not in fcols:
@@ -250,6 +255,12 @@ class LibraryV2(Library):
                 db.execute("DELETE FROM provider_category_kinds WHERE playlist_id=?", (playlist_id,))
                 db.executemany("INSERT INTO provider_category_kinds VALUES (?,?,?)",
                                [(playlist_id,name,kind) for name,kind in kinds.items()])
+        posters = get_provider_series_posters(location)
+        if posters:
+            with self.connect() as db:
+                db.execute("DELETE FROM provider_series_posters WHERE playlist_id=?", (playlist_id,))
+                db.executemany("INSERT INTO provider_series_posters VALUES (?,?,?)",
+                               [(playlist_id,name,cover) for name,cover in posters.items()])
         self.ensure_categories(playlist_id, force=True)
         if r and not r["epg_url"]:
             epg = epg_from_header(location)
@@ -312,7 +323,16 @@ class LibraryV2(Library):
                     GROUP BY series_name ORDER BY series_name COLLATE NOCASE LIMIT ? OFFSET ?"""
             else:
                 sql = f"SELECT * FROM items WHERE {condition} ORDER BY title COLLATE NOCASE LIMIT ? OFFSET ?"
-            return [dict(r) for r in db.execute(sql,(*args,limit,offset))]
+            rows = [dict(r) for r in db.execute(sql,(*args,limit,offset))]
+            if kind == "series" and rows:
+                name_keys = [(row,normalized(row["title"])) for row in rows]
+                by_key = {r["normalized_title"]:r["cover"] for r in db.execute(
+                    "SELECT normalized_title,cover FROM provider_series_posters WHERE playlist_id=?",
+                    (playlist_id,))}
+                for row,key in name_keys:
+                    if key in by_key:
+                        row["logo"] = by_key[key]
+            return rows
 
     def favorite_entries(self, playlist_id: int, search: str = "") -> list[dict]:
         with self.connect() as db:
