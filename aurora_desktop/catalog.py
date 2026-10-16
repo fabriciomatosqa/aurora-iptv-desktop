@@ -10,12 +10,12 @@ import re
 import sqlite3
 import tempfile
 import unicodedata
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from xml.etree.ElementTree import iterparse
 
 import requests
 
-from .core import ATTR, Library, playlist_lines
+from .core import ATTR, Library, playlist_lines, kind_of, episode_info, parse_extinf
 
 GENRES = (
     ("Ação", r"\ba[cç][aã]o\b|\baction\b"),
@@ -59,34 +59,52 @@ MATCH = re.compile(r"(?i)\b[\wÀ-ÿ][\wÀ-ÿ .'-]{1,45}\s+(?:x|vs\.?|versus|×)\
 FOOTBALL = re.compile(r"(?i)\bfutebol\b|\bfootball\b|\bsoccer\b|\bbrasileir[aã]o\b|\bchampions\b|\blibertadores\b|\bcopa\s+do\s+brasil\b|\bmundial\s+de\s+clubes\b")
 
 
+def clean_label(text: str) -> str:
+    """Remove formatting markers, not content names."""
+    text = text.strip().strip("✦●•|: ")
+    return re.sub(r"\s+", " ", text) or "Outros"
+
+
 def channel_base(title: str) -> str:
-    clean = re.sub(r'^\s*(?:BR\s*[:|]\s*)', '', title, flags=re.IGNORECASE).strip()
+    clean = clean_label(title)
+    clean = re.sub(r"(?i)^(?:(?:BR|BRA|PT|US)\s*[:|\-]\s*)+", "", clean)
     for label, pattern in CHANNELS:
         if re.search(pattern, clean, re.IGNORECASE):
             return label
-    clean = re.sub(r"\s*[\[(](?:HD|FHD|UHD|4K|SD|BR)[\])]", "", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"(?i)\s*[\[(](?:HD|FHD|UHD|4K|SD|BR|H265|HEVC)[\])]", "", clean)
     clean = QUALITY.sub("", clean).strip()
     clean = REGION.sub("", clean).strip(" -|:")
-    return clean or "Sem nome"
+    return clean or "Outros canais"
 
 
 def category_of(kind: str, title: str, group_name: str) -> str:
-    group = group_name.strip()
+    group = clean_label(group_name) if group_name.strip() else ""
     if kind == "live":
         return channel_base(title)
-    if kind == "movie":
+    if kind in ("movie", "series"):
+        # Genre comes first for both movies AND series.
         for genre, pattern in GENRES:
             if re.search(pattern, group, re.IGNORECASE):
                 return genre
-        return group or "Outros filmes"
-    if kind == "series":
-        for provider, pattern in PLATFORMS:
-            if re.search(pattern, group, re.IGNORECASE):
-                return provider
-        # Do not invent a streaming company when none is identified.
-        cleaned = re.sub(r"(?i)^\s*(s[eé]ries?|series|shows?)\s*(?:[|:\/-]\s*)?", "", group).strip()
-        return cleaned or "Sem plataforma identificada"
+        if kind == "series":
+            for provider, pattern in PLATFORMS:
+                if re.search(pattern, group, re.IGNORECASE):
+                    return provider
+            stripped = re.sub(r"(?i)^\s*(s[eé]ries?|series|shows?)\s*(?:[|:/-]\s*)?", "", group).strip()
+            return stripped or "Outras séries"
+        stripped = re.sub(r"(?i)^\s*(filmes?|movies?|vod|cinema)\s*(?:[|:/-]\s*)?", "", group).strip()
+        return stripped or "Outros filmes"
     return "Outros"
+
+
+def repair_legacy_title(title: str, group: str, logo: str) -> tuple[str, str, str]:
+    """Recover corrupted titles from the 0.1/0.2 EXTINF comma bug."""
+    if "tvg-logo=" in title or "group-title=" in title or "tvg-id=" in title:
+        parsed = parse_extinf("#EXTINF:-1," + title)
+        repaired_title = parsed["title"]
+        if repaired_title != title and not repaired_title.startswith("tvg-"):
+            return repaired_title, parsed["group"] or group, parsed["logo"] or logo
+    return title, group, logo
 
 
 def xmltv_time(value: str) -> datetime | None:
@@ -119,6 +137,12 @@ def epg_from_header(source: str) -> str:
                 return url
     except (OSError, requests.RequestException, ValueError):
         pass
+    # Xtream-compatible providers can expose XMLTV separately from get.php.
+    parsed = urlparse(source)
+    args = parse_qs(parsed.query)
+    if parsed.scheme in ("http", "https") and parsed.path.lower().endswith("/get.php") and args.get("username") and args.get("password"):
+        query = urlencode({"username": args["username"][0], "password": args["password"][0]})
+        return urlunparse((parsed.scheme, parsed.netloc, "/xmltv.php", "", query, ""))
     return ""
 
 
@@ -179,11 +203,15 @@ class LibraryV2(Library):
                     PRIMARY KEY (playlist_id,channel_id,start,title)
                 );
                 CREATE INDEX IF NOT EXISTS idx_football_start ON football_events(playlist_id,start);
+                CREATE TABLE IF NOT EXISTS classification_version (
+                    playlist_id INTEGER PRIMARY KEY REFERENCES playlists(id) ON DELETE CASCADE,
+                    version INTEGER NOT NULL
+                );
             """)
 
     def import_playlist(self, playlist_id: int, source: str | None = None) -> int:
         count = super().import_playlist(playlist_id, source)
-        self.ensure_categories(playlist_id)
+        self.ensure_categories(playlist_id, force=True)
         with self.connect() as db:
             r = db.execute("SELECT source,epg_url FROM playlists WHERE id=?", (playlist_id,)).fetchone()
         if r and not r["epg_url"]:
@@ -192,17 +220,31 @@ class LibraryV2(Library):
                 self.set_epg_url(playlist_id, epg)
         return count
 
-    def ensure_categories(self, playlist_id: int) -> None:
-        """Migrate older v0.1 catalogs in bounded batches; never erase user data."""
+    def ensure_categories(self, playlist_id: int, force: bool = False) -> None:
+        """Reclassify a 0.1/0.2 catalog once, preserving URL-keyed favorites and progress."""
         with self.connect() as db:
+            row = db.execute("SELECT version FROM classification_version WHERE playlist_id=?", (playlist_id,)).fetchone()
+            if row and row["version"] >= 3 and not force:
+                return
+            cursor = 0
             while True:
-                batch = db.execute("""SELECT key,title,group_name,kind FROM items
-                    WHERE playlist_id=? AND category='' LIMIT 1000""", (playlist_id,)).fetchall()
+                batch = db.execute("""SELECT rowid,key,title,url,group_name,kind,logo
+                    FROM items WHERE playlist_id=? AND rowid>? ORDER BY rowid LIMIT 1200""",
+                    (playlist_id, cursor)).fetchall()
                 if not batch:
                     break
-                db.executemany("UPDATE items SET category=? WHERE playlist_id=? AND key=?",
-                    [(category_of(r["kind"],r["title"],r["group_name"]),playlist_id,r["key"]) for r in batch])
-            db.commit()
+                updated = []
+                for item in batch:
+                    title, group, logo = repair_legacy_title(item["title"], item["group_name"], item["logo"])
+                    kind = kind_of(group, title, item["url"])
+                    series, season, episode = episode_info(title) if kind == "series" else ("", None, None)
+                    category = category_of(kind, title, group)
+                    updated.append((title,group,logo,kind,category,series,season,episode,item["rowid"]))
+                db.executemany("""UPDATE items SET title=?,group_name=?,logo=?,kind=?,
+                    category=?,series_name=?,season=?,episode=? WHERE rowid=?""",updated)
+                cursor = batch[-1]["rowid"]
+            db.execute("""INSERT INTO classification_version VALUES (?,3)
+                ON CONFLICT(playlist_id) DO UPDATE SET version=3""", (playlist_id,))
 
     def categories(self, playlist_id: int, kind: str) -> list[dict]:
         with self.connect() as db:
@@ -264,7 +306,7 @@ class LibraryV2(Library):
         """Guide dates come exclusively from XMLTV. Never synthesize kickoff times."""
         epg_url = self.get_epg_url(playlist_id)
         if not epg_url:
-            raise ValueError("Configure uma URL XMLTV nas Configurações para carregar o Futebol.")
+            raise ValueError("Sua playlist não informou XMLTV. Configure o EPG ou consulte os canais esportivos disponíveis.")
         now = datetime.now().astimezone()
         start_cutoff = now - timedelta(hours=3)
         end_cutoff = now + timedelta(days=7)
@@ -312,3 +354,21 @@ class LibraryV2(Library):
             return [dict(r) for r in db.execute(
                 "SELECT competition AS title,COUNT(*) AS total FROM football_events WHERE playlist_id=? GROUP BY competition ORDER BY title",
                 (playlist_id,))]
+
+
+    def sport_channels(self, playlist_id: int, search: str = "", limit: int = 160) -> list[dict]:
+        """When an EPG is missing, show genuine sports channels, not imaginary games."""
+        pattern = r"(?i)(sportv|premiere|espn|fox\s*sports|tnt\s*sports|futebol|sport|esport|canal\s*goat|caz[eé]\s*tv|bandsports)"
+        with self.connect() as db:
+            rows = db.execute("""SELECT * FROM items WHERE playlist_id=? AND kind='live'
+                ORDER BY title COLLATE NOCASE LIMIT 15000""", (playlist_id,))
+            result = []
+            for r in rows:
+                if re.search(pattern, r["title"] + " " + r["group_name"]) and (
+                    not search or search.casefold() in r["title"].casefold()):
+                    item = dict(r)
+                    item["kind"] = "football_channel"
+                    result.append(item)
+                    if len(result) >= limit:
+                        break
+            return result
