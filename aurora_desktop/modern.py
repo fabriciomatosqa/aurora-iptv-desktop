@@ -606,7 +606,8 @@ class MainWindow(legacy.MainWindow):
                     dt = datetime.fromisoformat(r["start"]).strftime("%d/%m · %H:%M")
                 except (KeyError,ValueError):
                     dt = "Horário indisponível"
-                title = f"{dt}\n{title}\n{r.get('channel_title') or 'Canal sem correspondência'}"
+                status = "  •  REPRISE" if r.get("broadcast") == "replay" else "  •  AO VIVO" if r.get("broadcast") == "live" else ""
+                title = f"{dt}{status}\n{title}\n{r.get('competition','Jogos')} · {r.get('channel_title') or 'Canal sem correspondência'}"
             elif r.get("kind") == "football_channel":
                 title = "CANAL ESPORTIVO  ·  " + title
             elif r.get("kind") == "series" and self.mode != "episodes":
