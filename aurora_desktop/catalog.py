@@ -504,15 +504,19 @@ class LibraryV2(Library):
         """When an EPG is missing, show genuine sports channels, not imaginary games."""
         pattern = r"(?i)(sportv|premiere|espn|fox\s*sports|tnt\s*sports|futebol|sport|esport|canal\s*goat|caz[eé]\s*tv|bandsports)"
         with self.connect() as db:
-            rows = db.execute("""SELECT * FROM items WHERE playlist_id=? AND kind='live'
-                ORDER BY title COLLATE NOCASE LIMIT 15000""", (playlist_id,))
+            cursor = db.execute("""SELECT * FROM items WHERE playlist_id=? AND kind='live'
+                ORDER BY title COLLATE NOCASE""", (playlist_id,))
             result = []
-            for r in rows:
-                if re.search(pattern, r["title"] + " " + r["group_name"]) and (
-                    not search or search.casefold() in r["title"].casefold()):
-                    item = dict(r)
-                    item["kind"] = "football_channel"
-                    result.append(item)
-                    if len(result) >= limit:
-                        break
+            while len(result) < limit:
+                batch = cursor.fetchmany(800)
+                if not batch:
+                    break
+                for r in batch:
+                    if re.search(pattern, r["title"] + " " + r["group_name"]) and (
+                        not search or search.casefold() in r["title"].casefold()):
+                        item = dict(r)
+                        item["kind"] = "football_channel"
+                        result.append(item)
+                        if len(result) >= limit:
+                            break
             return result
