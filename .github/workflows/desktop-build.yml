@@ -39,6 +39,10 @@ jobs:
         run: |
           python -m pip install -r requirements.txt pytest
           python -m pytest tests -q
+      - name: Verify real GitHub installer download (bytes and SHA-256)
+        shell: pwsh
+        timeout-minutes: 5
+        run: python .github/scripts/verify-release-download.py
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
