@@ -149,7 +149,7 @@ class Library:
                     key TEXT NOT NULL, title TEXT NOT NULL, url TEXT NOT NULL,
                     group_name TEXT NOT NULL, kind TEXT NOT NULL, logo TEXT NOT NULL,
                     series_name TEXT NOT NULL, season INTEGER, episode INTEGER,
-                    PRIMARY KEY(playlist_id,key)
+                    tvg_id TEXT NOT NULL DEFAULT '', PRIMARY KEY(playlist_id,key)
                 );
                 CREATE INDEX IF NOT EXISTS idx_items_kind ON items(playlist_id,kind,title COLLATE NOCASE);
                 CREATE INDEX IF NOT EXISTS idx_items_series ON items(playlist_id,series_name,season,episode);

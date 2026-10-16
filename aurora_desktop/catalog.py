@@ -146,7 +146,15 @@ def _read_xmltv(source: str):
         magic = file.read(2)
         file.seek(0)
         reader = gzip.GzipFile(fileobj=file) if magic == b"\x1f\x8b" else file
-        yield from iterparse(reader, events=("end",))
+        context = iterparse(reader, events=("start", "end"))
+        try:
+            _, root = next(context)
+        except StopIteration:
+            return
+        for event, element in context:
+            if event == "end" and element.tag == "programme":
+                yield element
+                root.clear()
 
 
 class LibraryV2(Library):
@@ -187,10 +195,9 @@ class LibraryV2(Library):
     def ensure_categories(self, playlist_id: int) -> None:
         """Migrate older v0.1 catalogs in bounded batches; never erase user data."""
         with self.connect() as db:
-            cursor = db.execute("""SELECT key,title,group_name,kind FROM items
-                WHERE playlist_id=? AND category=''""", (playlist_id,))
             while True:
-                batch = cursor.fetchmany(1000)
+                batch = db.execute("""SELECT key,title,group_name,kind FROM items
+                    WHERE playlist_id=? AND category='' LIMIT 1000""", (playlist_id,)).fetchall()
                 if not batch:
                     break
                 db.executemany("UPDATE items SET category=? WHERE playlist_id=? AND key=?",
@@ -262,10 +269,7 @@ class LibraryV2(Library):
         start_cutoff = now - timedelta(hours=3)
         end_cutoff = now + timedelta(days=7)
         events = []
-        for _, elem in _read_xmltv(epg_url):
-            if elem.tag != "programme":
-                elem.clear()
-                continue
+        for elem in _read_xmltv(epg_url):
             time = xmltv_time(elem.get("start", ""))
             if time and start_cutoff <= time <= end_cutoff:
                 title = next((c.text or "" for c in elem if c.tag == "title"), "").strip()
