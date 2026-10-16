@@ -470,29 +470,28 @@ class MainWindow(legacy.MainWindow):
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole,value)
             self.groups.addItem(item)
-        self.groups.blockSignals(False)
         self.groups.setCurrentRow(0)
+        self.groups.blockSignals(False)
         self._load_items(reset=True)
 
     def _add_result(self,label,record):
         item = QListWidgetItem(label)
         item.setData(Qt.ItemDataRole.UserRole,record)
+        item.setSizeHint(QSize(0,104))
         self.results.addItem(item)
         self.covers.enqueue(item,record.get("logo",""))
         return item
 
     def _load_items(self,reset=False):
-        if self._loading_items:
-            return
-        if reset:
-            self.covers.reset()
-            self.results.clear()
-            self.offset = 0
-            self._exhausted = False
-        if self._exhausted:
+        if self._loading_items or (self._exhausted and not reset):
             return
         self._loading_items = True
         try:
+            if reset:
+                self.covers.reset()
+                self.results.clear()
+                self.offset = 0
+                self._exhausted = False
             if self.playlist_id is None and self.mode != "settings":
                 self.page.setText("Adicione uma playlist em Configurações.")
                 self._exhausted = True
@@ -569,7 +568,7 @@ class MainWindow(legacy.MainWindow):
             return
         if row.get("kind") == "football":
             if row.get("url"):
-                self._start(row)
+                self._start({**row,"kind":"live"})
             else:
                 self.status.setText("O EPG não identificou um canal desta lista para o jogo selecionado.")
             return
