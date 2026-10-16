@@ -32,13 +32,13 @@ def asset(name: str) -> Path:
 class AuroraBanner(QFrame):
     def __init__(self):
         super().__init__()
-        self.setMinimumHeight(100)
-        self.setMaximumHeight(126)
+        self.setMinimumHeight(118)
+        self.setMaximumHeight(142)
         self._image = QPixmap(str(asset("aurora_banner.jpg")))
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(26, 14, 20, 14)
+        layout.setContentsMargins(27, 16, 22, 16)
         title = QLabel("AURORA  /  IPTV")
-        title.setStyleSheet("font-size:24px;font-weight:800;color:white;background:transparent;")
+        title.setStyleSheet("font-size:27px;font-weight:800;color:white;background:transparent;")
         subtitle = QLabel("SEU UNIVERSO DE ENTRETENIMENTO  ·  DESKTOP")
         subtitle.setStyleSheet("font-size:11px;letter-spacing:2px;color:#b5ffef;background:transparent;")
         layout.addStretch()
@@ -179,14 +179,14 @@ class MainWindow(legacy.MainWindow):
 
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(206)
+        sidebar.setFixedWidth(226)
         side = QVBoxLayout(sidebar)
-        side.setContentsMargins(13,18,13,18)
+        side.setContentsMargins(15,20,15,18)
         side.setSpacing(9)
         logo = QLabel()
         icon = QPixmap(str(asset("aurora_icon.png")))
         if not icon.isNull():
-            logo.setPixmap(icon.scaled(84,84,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
+            logo.setPixmap(icon.scaled(78,78,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
         else:
             logo.setText("✦")
             logo.setStyleSheet("font-size:40px;color:#77f4d6;")
@@ -195,7 +195,7 @@ class MainWindow(legacy.MainWindow):
         brand = QLabel("AURORA IPTV")
         brand.setObjectName("brand")
         side.addWidget(brand)
-        side.addWidget(QLabel("DESKTOP  ·  v0.2.0"))
+        side.addWidget(QLabel("DESKTOP  ·  v0.3.0"))
         side.addSpacing(18)
         self.nav = {}
         for mode,title in [
@@ -214,8 +214,8 @@ class MainWindow(legacy.MainWindow):
 
         shell = QWidget()
         outer = QVBoxLayout(shell)
-        outer.setContentsMargins(13,13,13,13)
-        outer.setSpacing(12)
+        outer.setContentsMargins(16,15,16,15)
+        outer.setSpacing(14)
         upper = QHBoxLayout()
         upper.addWidget(AuroraBanner(),1)
         tool = QVBoxLayout()
@@ -234,7 +234,10 @@ class MainWindow(legacy.MainWindow):
 
         categories_panel = QFrame()
         categories_panel.setObjectName("panel")
+        categories_panel.setMinimumWidth(230)
         group_layout = QVBoxLayout(categories_panel)
+        group_layout.setContentsMargins(16,17,16,14)
+        group_layout.setSpacing(9)
         self.groups_title = QLabel("CLASSIFICAÇÃO")
         self.groups_title.setObjectName("heading")
         group_layout.addWidget(self.groups_title)
@@ -243,6 +246,9 @@ class MainWindow(legacy.MainWindow):
         self.groups_hint.setWordWrap(True)
         group_layout.addWidget(self.groups_hint)
         self.groups = QListWidget()
+        self.groups.setSpacing(4)
+        self.groups.setWordWrap(False)
+        self.groups.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.groups.setObjectName("groups")
         self.groups.currentItemChanged.connect(self._change_category)
         group_layout.addWidget(self.groups,1)
@@ -250,7 +256,10 @@ class MainWindow(legacy.MainWindow):
 
         contents_panel = QFrame()
         contents_panel.setObjectName("panel")
+        contents_panel.setMinimumWidth(340)
         content_layout = QVBoxLayout(contents_panel)
+        content_layout.setContentsMargins(16,17,16,14)
+        content_layout.setSpacing(10)
         self.heading = QLabel("Explorar")
         self.heading.setObjectName("heading")
         content_layout.addWidget(self.heading)
@@ -263,10 +272,11 @@ class MainWindow(legacy.MainWindow):
         self.search.textChanged.connect(self._search)
         content_layout.addWidget(self.search)
         self.results = QListWidget()
-        self.results.setIconSize(QSize(72,86))
+        self.results.setIconSize(QSize(65,88))
         self.results.setUniformItemSizes(True)
-        self.results.setSpacing(5)
+        self.results.setSpacing(7)
         self.results.setWordWrap(True)
+        self.results.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.results.currentItemChanged.connect(self._selected)
         self.results.itemDoubleClicked.connect(self._open)
         self.results.verticalScrollBar().valueChanged.connect(self._near_end)
@@ -302,7 +312,10 @@ class MainWindow(legacy.MainWindow):
 
         player_panel = QFrame()
         player_panel.setObjectName("panel")
+        player_panel.setMinimumWidth(440)
         play_layout = QVBoxLayout(player_panel)
+        play_layout.setContentsMargins(17,17,17,14)
+        play_layout.setSpacing(10)
         self.now = QLabel("AURORA  ·  PRONTO PARA ASSISTIR")
         self.now.setObjectName("muted")
         play_layout.addWidget(self.now)
@@ -354,7 +367,10 @@ class MainWindow(legacy.MainWindow):
         self.status.setWordWrap(True)
         play_layout.addWidget(self.status)
         panels.addWidget(player_panel)
-        panels.setSizes([225,420,680])
+        panels.setStretchFactor(0,1)
+        panels.setStretchFactor(1,2)
+        panels.setStretchFactor(2,3)
+        panels.setSizes([260,455,725])
         base.addWidget(shell,1)
 
         QShortcut(QKeySequence("Space"),self,self._toggle_play)
@@ -363,27 +379,64 @@ class MainWindow(legacy.MainWindow):
         self._loading_items = False
         self._exhausted = False
         self._indexed = set()
+        self._auto_guide_attempted = set()
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.setInterval(240)
         self._search_timer.timeout.connect(self._refresh)
         self.guide_thread = None
-        self.setMinimumSize(1070,620)
-        self.resize(1550,860)
+        self.setMinimumSize(1150,680)
+        self.resize(1580,900)
 
     def _theme_apply(self):
         super()._theme_apply()
-        dark = self.settings.value("theme","system") == "dark"
-        if self.settings.value("theme","system") == "system":
-            dark = QApplication.instance().styleHints().colorScheme() != Qt.ColorScheme.Light
-        extra = """
-            QFrame#panel { border-radius:14px; }
-            QLabel#heading { font-size:17px; font-weight:800; }
-            QListWidget#groups::item {padding:13px 8px;}
-            QListWidget#groups::item:selected {border-left:3px solid #58e4cc;}
-            QLineEdit {min-height:18px;}
-        """
-        QApplication.instance().setStyleSheet(QApplication.instance().styleSheet() + extra)
+        choice = self.settings.value("theme","system")
+        dark = choice == "dark" or (
+            choice == "system" and
+            QApplication.instance().styleHints().colorScheme() != Qt.ColorScheme.Light
+        )
+        fg = "#ebfcff" if dark else "#16374b"
+        muted = "#a4c0ca" if dark else "#587787"
+        bg = "#071525" if dark else "#eaf3f6"
+        panel = "#10273b" if dark else "#ffffff"
+        border = "#285268" if dark else "#bfd5df"
+        hover = "#1d4555" if dark else "#dcefed"
+        accent = "#67e4ce" if dark else "#127c88"
+        active = "#214c5e" if dark else "#cef0ea"
+        app = QApplication.instance()
+        app.setStyleSheet(app.styleSheet() + f"""
+            QWidget {{font-size:14px;}}
+            QMainWindow {{background:{bg};}}
+            QMenuBar {{background:{bg}; color:{fg}; padding:5px;border:0;}}
+            QMenuBar::item:selected {{background:{hover};border-radius:6px;}}
+            QFrame#sidebar {{background:{'#0b2033' if dark else '#d9eef1'};
+                border-right:1px solid {border};}}
+            QFrame#panel {{background:{panel};border:1px solid {border};border-radius:16px;}}
+            QLabel#brand {{font-size:19px;font-weight:900;color:{accent};}}
+            QLabel#heading {{font-size:19px;font-weight:800;color:{fg};}}
+            QLabel#muted {{color:{muted};font-size:12px;}}
+            QPushButton {{font-size:14px;font-weight:600;border-radius:10px;
+                background:{hover};border:1px solid {border};padding:10px 13px;}}
+            QPushButton:hover {{border:1px solid {accent};}}
+            QPushButton:checked {{background:{active};border:1px solid {accent};color:{fg};}}
+            QPushButton#primary {{background:{accent};border:0;color:{'#09232d' if dark else '#ffffff'};font-weight:800;}}
+            QLineEdit,QComboBox {{font-size:14px;padding:11px 12px;
+                background:{'#102d43' if dark else '#f7fcfd'};
+                border:1px solid {border};border-radius:10px;}}
+            QLineEdit:focus,QComboBox:focus {{border-color:{accent};}}
+            QListWidget {{background:transparent;border:0;outline:0;
+                font-size:14px;color:{fg};}}
+            QListWidget::item {{border:1px solid transparent;border-radius:10px;padding:10px 8px;}}
+            QListWidget::item:hover {{background:{hover};}}
+            QListWidget::item:selected {{background:{active};border:1px solid {accent};color:{fg};}}
+            QListWidget#groups::item {{padding:13px 12px;}}
+            QListWidget#groups::item:selected {{border-left:3px solid {accent};}}
+            QSplitter::handle {{background:transparent;width:7px;}}
+            QScrollBar:vertical {{width:9px;background:transparent;}}
+            QScrollBar::handle:vertical {{background:{border};border-radius:4px;min-height:42px;}}
+            QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical {{height:0px;}}
+            QToolTip {{background:{panel};color:{fg};border:1px solid {accent};}}
+        """)
 
     def navigate(self, mode):
         self.mode = mode
@@ -397,6 +450,8 @@ class MainWindow(legacy.MainWindow):
         for k,b in self.nav.items():
             b.setChecked(k == mode)
         self._refresh()
+        if mode == "football" and self.playlist_id is not None:
+            self._maybe_load_guide()
 
     def _search(self):
         self._search_timer.start()
@@ -417,7 +472,7 @@ class MainWindow(legacy.MainWindow):
         }
         self.heading.setText(titles.get(self.mode,"AURORA IPTV"))
         self.groups_title.setText("CLASSIFICAÇÃO" if self.mode != "football" else "CAMPEONATOS")
-        self.groups_hint.setText("Selecione um grupo para filtrar" if self.mode not in ("home","settings") else "Navegue pela sua biblioteca")
+        self.groups_hint.setText("Escolha uma categoria" if self.mode not in ("home","settings") else "Sua biblioteca")
         self.search.setVisible(self.mode not in ("settings","episodes"))
         self.previous.setVisible(self.mode == "episodes")
         self.theme_select.setVisible(self.mode == "settings")
@@ -439,9 +494,9 @@ class MainWindow(legacy.MainWindow):
         if self.mode == "settings":
             self.subtitle.setText("Clique com o botão direito para editar ou excluir listas. A atualização preserva seus dados.")
         elif self.mode == "football":
-            self.subtitle.setText("Partidas e horários do guia XMLTV da playlist. Sem partidas fictícias.")
+            self.subtitle.setText("Agenda do EPG e canais esportivos disponíveis.")
         elif self.mode == "series":
-            self.subtitle.setText("Grupos e plataformas identificados na própria lista M3U.")
+            self.subtitle.setText("Gêneros de séries, plataformas e categorias da playlist.")
         else:
             self.subtitle.setText("Escolha uma categoria; a lista carrega conforme você rola.")
         if self.playlist_id is not None and self.mode in ("live","movie","series") and self.playlist_id not in self._indexed:
@@ -469,6 +524,7 @@ class MainWindow(legacy.MainWindow):
         for label,value in choices:
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole,value)
+            item.setToolTip(label)
             self.groups.addItem(item)
         self.groups.setCurrentRow(0)
         self.groups.blockSignals(False)
@@ -477,7 +533,8 @@ class MainWindow(legacy.MainWindow):
     def _add_result(self,label,record):
         item = QListWidgetItem(label)
         item.setData(Qt.ItemDataRole.UserRole,record)
-        item.setSizeHint(QSize(0,104))
+        item.setSizeHint(QSize(0,106))
+        item.setToolTip(label.replace("\n", " — "))
         self.results.addItem(item)
         self.covers.enqueue(item,record.get("logo",""))
         return item
