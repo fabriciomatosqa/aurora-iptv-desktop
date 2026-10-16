@@ -1,6 +1,17 @@
-# AURORA IPTV — Desktop 0.2.0 beta
+# AURORA IPTV — Desktop 0.3.0 beta
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
+
+## Versão 0.3.0 — classificação e identidade visual
+
+- Corrige playlists M3U com atributos EXTINF depois da vírgula (o título deixa de exibir textos `tvg-logo=`).
+- Reclassifica entradas antigas mantendo endereço da playlist, favoritos e progresso.
+- Ao vivo: redes e canais (Globo, Band, SporTV etc.) como subcategorias.
+- Filmes e séries: gêneros como ação, terror, romance e comédia como subcategorias; fallback de grupos do provedor.
+- Melhora tipografia, dimensão da janela, cartões, cabeçalho com aurora, painéis e temas.
+- Futebol: quando não há partidas no XMLTV, mostra canais esportivos reais sem horários fictícios; busca EPG Xtream quando a playlist oferece os dados.
+- O instalador atualiza a versão anterior na mesma pasta e preserva o catálogo SQLite.
+- Depois de instalar, abra a playlist e confira os agrupamentos. Se sua fonte tiver alterado categorias, use **Atualizar playlist** para reler os metadados.
 
 ## Versão 0.2.0 — alterações
 
@@ -18,7 +29,7 @@ Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Reposit�
 
 Acesse [GitHub Actions: compilar Desktop](https://github.com/fabriciomatosqa/aurora-iptv-desktop/actions/workflows/desktop-build.yml). Selecione a execução **concluída com sucesso** da versão 0.2 e, na parte inferior, em Artifacts, baixe:
 
-- **AURORA-IPTV-Windows-Setup**: instalador .exe. Execute por cima da versão 0.1.0, na mesma pasta, sem desinstalar. O AppId do Inno Setup não mudou e a base local permanece em %LOCALAPPDATA%/AURORA IPTV.
+- **AURORA-IPTV-Windows-Setup**: instalador .exe. Execute por cima da versão anterior, na mesma pasta, sem desinstalar. O AppId do Inno Setup não mudou e a base local permanece em %LOCALAPPDATA%/AURORA IPTV.
 - **AURORA-IPTV-Linux**: .deb atualiza o pacote de mesmo nome aurora-iptv; inclui também uma distribuição portátil .tar.gz. Os dados locais permanecem em ~/.local/share/aurora-iptv.
 
 O instalador Windows pode solicitar o fechamento do aplicativo para substituir os executáveis. Os builds são testes de compilação, não equivalem a um teste final de reprodução real com seu provedor.
