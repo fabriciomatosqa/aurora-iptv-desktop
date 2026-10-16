@@ -457,7 +457,7 @@ class LibraryV2(Library):
     @staticmethod
     def _linked_football_source() -> str:
         # The real playlist must contain the channel; do not display phantom games.
-        return """JOIN items i ON i.rowid=(
+        return """LEFT JOIN items i ON i.rowid=(
             SELECT rowid FROM items
             WHERE playlist_id=f.playlist_id AND kind='live' AND f.channel_id<>''
                 AND (tvg_id=f.channel_id OR title=f.channel_id)
@@ -470,7 +470,7 @@ class LibraryV2(Library):
         # Keep at most the last hour after a broadcast ends; refresh this filter
         # on every query rather than waiting for a new XMLTV import.
         threshold = (datetime.now().astimezone() - timedelta(hours=1)).isoformat()
-        where = ["f.playlist_id=?", "datetime(f.end)>datetime(?)"]
+        where = ["f.playlist_id=?", "datetime(f.end)>datetime(?)", "i.key IS NOT NULL"]
         args: list = [playlist_id,threshold]
         if category:
             where.append("f.competition=?")
@@ -489,7 +489,7 @@ class LibraryV2(Library):
         threshold = (datetime.now().astimezone() - timedelta(hours=1)).isoformat()
         sql = f"""SELECT f.competition AS title,COUNT(*) AS total
             FROM football_events f {self._linked_football_source()}
-            WHERE f.playlist_id=? AND datetime(f.end)>datetime(?)
+            WHERE f.playlist_id=? AND datetime(f.end)>datetime(?) AND i.key IS NOT NULL
             GROUP BY f.competition ORDER BY f.competition"""
         with self.connect() as db:
             return [dict(r) for r in db.execute(sql,(playlist_id,threshold))]
