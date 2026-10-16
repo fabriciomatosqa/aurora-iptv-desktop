@@ -1,4 +1,4 @@
-# AURORA IPTV — Desktop 0.6.0-beta.3
+# AURORA IPTV — Desktop 0.6.0-beta.4
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
 
@@ -6,13 +6,12 @@ Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Reposit�
 
 **Baixe as versões oficiais em [GitHub Releases](https://github.com/fabriciomatosqa/aurora-iptv-desktop/releases).**
 
-A edição 0.6.0-beta.1 é a primeira com atualização integrada. Quem usa 0.5.0 ou anterior instala 0.6.0-beta.1 manualmente uma vez. Depois pode testar a atualização silenciosa para 0.6.0-beta.2 dentro do aplicativo.
-
+Para testar o fluxo corrigido: instale uma unica vez a **[0.6.0-beta.3](https://github.com/fabriciomatosqa/aurora-iptv-desktop/releases/tag/v0.6.0-beta.3)** manualmente. A beta 2 ainda não tem o novo auxiliar. Em seguida, dentro do AURORA, atualize para a **0.6.0-beta.4**. As versões antigas continuam disponíveis no GitHub Releases, mas o menu do programa não mostra mais o histórico.
 No Windows:
 1. Abra Atualizações > Verificar atualizações agora. O sistema também verifica automaticamente, em intervalos de 24 h.
 2. Confira a versão instalada e a mais recente. Clique em Atualizar agora.
-3. O AURORA baixa o instalador oficial, valida o SHA-256, executa Inno Setup com /VERYSILENT e fecha o aplicativo, sem as telas de Avançar.
-4. Abra o aplicativo novamente para conferir a nova versão na barra de título e no menu Atualizações.
+3. O AURORA baixa o instalador oficial, valida o SHA-256 e encerra a aplicação.
+4. Um auxiliar separado aguarda o fechamento do AURORA, instala com /VERYSILENT e reabre o aplicativo. Confira a nova versão na barra de título e no menu Atualizações.
 
 A atualização substitui o aplicativo no mesmo local, sem desinstalar manualmente; playlists e favoritos permanecem na pasta de dados do usuário. O processo nunca instala algo sem o clique de confirmação. Alertas de segurança do próprio Windows (como SmartScreen) não podem ser evitados pelo aplicativo.
 

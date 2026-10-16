@@ -1,12 +1,11 @@
-# AURORA IPTV Desktop 0.6.0 beta 3
+# AURORA IPTV Desktop 0.6.0 beta 4
 
-Correcao do fluxo de atualizacao silenciosa no Windows:
+Beta de teste do atualizador silencioso corrigido na beta 3.
 
-- Remove "Historico de versoes" do menu Atualizacoes (os Releases antigos permanecem preservados no GitHub).
-- Ao aprovar uma atualizacao: baixa todo o instalador, verifica SHA-256, fecha o AURORA, aguarda a saida do processo, instala sem assistente e reabre a nova versao automaticamente.
-- Usa um auxiliar PowerShell separado da pasta instalada para nao bloquear a substituicao do executavel.
-- Grava status e log na pasta de atualizacoes para diagnosticar falhas; apresenta o resultado quando o AURORA reabre.
-- Mantem as playlists, favoritos e configuracoes locais.
-- E uma versao beta: avisos de seguranca do Windows nao podem ser ignorados automaticamente.
+- Quem instalou 0.6.0-beta.3 pode abrir Atualizacoes > Verificar atualizacoes agora e autorizar a instalacao online desta beta 4.
+- O novo fluxo baixa o instalador verificado SHA-256, encerra completamente o aplicativo, executa Inno Setup silenciosamente sem telas de "Avancar", e reabre o AURORA automaticamente.
+- O menu Atualizacoes nao possui mais a opcao Historico de versoes.
+- A barra de titulo identifica corretamente a versao 0.6.0-beta.4 apos a atualizacao.
+- O Windows grava um resultado da instalacao para mostrar confirmacao ou erro quando o aplicativo volta a abrir.
 
-Como a beta 2 tem problema no atualizador, instale a beta 3 uma vez pelo GitHub. Teste a atualizacao beta 3 -> beta 4 pelo proprio aplicativo quando a proxima beta estiver disponivel.
+Instalar a beta 3 manualmente uma unica vez e depois atualizar a beta 4 dentro do programa permite validar o fluxo novo. O assistente de instalacao Windows nao pode evitar avisos de seguranca do proprio sistema operacional.

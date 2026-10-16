@@ -41,7 +41,15 @@ if (-not (Test-Path -LiteralPath $exe)) {
     throw "Installed executable missing after update"
 }
 Write-Host "Silent install sequence successful, version $version, $([int]$elapsed) seconds"
-Start-Sleep -Seconds 2
-Get-CimInstance Win32_Process -Filter "Name = 'AURORA-IPTV.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.ExecutablePath -eq $exe } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+$reopened = $null
+for ($i=0; $i -lt 24; $i++) {
+    $reopened = @(Get-CimInstance Win32_Process -Filter "Name = 'AURORA-IPTV.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -eq $exe })
+    if ($reopened.Count -gt 0) { break }
+    Start-Sleep -Milliseconds 500
+}
+if ($reopened.Count -lt 1) {
+    throw "The updated AURORA process was not reopened"
+}
+Write-Host "The updated app restarted as process $($reopened[0].ProcessId)"
+Start-Sleep -Seconds 1
+$reopened | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
