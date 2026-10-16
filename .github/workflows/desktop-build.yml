@@ -127,3 +127,4 @@ jobs:
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
               --title "AURORA IPTV Desktop $VERSION" \
               --notes-file docs/RELEASE_NOTES.md --latest=true
+          fi
