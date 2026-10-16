@@ -447,10 +447,16 @@ class MainWindow(legacy.MainWindow):
         self.resize(1580,900)
 
     def _start(self, item):
-        super()._start(item)
         if item.get("url"):
             self.video_stage.setCurrentWidget(self.video)
+        super()._start(item)
+        if item.get("url"):
             self.video.setFocus()
+
+    def _toggle_play(self):
+        if self.playing:
+            self.video_stage.setCurrentWidget(self.video)
+        super()._toggle_play()
 
     def _player_error(self, error, error_string):
         super()._player_error(error,error_string)
