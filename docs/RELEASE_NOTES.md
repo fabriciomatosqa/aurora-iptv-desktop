@@ -1,13 +1,17 @@
-# AURORA IPTV Desktop 0.6.0 beta 6
+# AURORA IPTV Desktop 0.6.0 beta 7 — Edição Visual Aurora
 
-Beta destinada a testar a atualização online da v0.6.0-beta.5 para a v0.6.0-beta.6.
+Redesenho completo do acabamento visual do Desktop, sem alterar as playlists, o banco de dados ou a atualização silenciosa que foi validada na beta.6.
 
-- A beta 5 corrigiu o problema da janela de progresso Qt que cancelava a operação ao finalizar o download.
-- O aplicativo mostra os MB transferidos e verifica o tamanho exato e SHA-256 antes de executar o instalador.
-- Após a única autorização, o auxiliar externo aguarda o AURORA encerrar, instala com /VERYSILENT e reabre a nova versão.
-- O GitHub Actions testa o download real de um instalador Windows de mais de 40 MB publicado no Releases, sua integridade e a instalação silenciosa.
-- O registro local de depuração fica em %LOCALAPPDATA%/AURORA IPTV/updates/update-debug.log, sem playlists ou credenciais.
+- Sete ícones vetoriais personalizados, nítidos em telas de alta resolução: casinha, televisão, rolo de cinema, episódios, bola, estrela dourada e engrenagem.
+- Ícones do menu com cores coordenadas e Favoritos com uma estrela amarela preenchida.
+- Remove as faixas pretas de cabeçalhos e legendas; QLabel e suas variações passam a ter transparência onde apropriado.
+- Folha de estilos única que substitui a antiga em cada troca de tema, em vez de acumular regras, melhorando consistência e memória.
+- Painéis, controles, barras de rolagem, campos, listas e rodapé ganham cores azul-petróleo e bordas harmonizadas com a aurora boreal.
+- Capas temporárias mais elegantes, com símbolos específicos para canais ao vivo, filmes, séries e futebol.
+- Tela de espera do player adaptada automaticamente para temas escuro/claro.
+- Novos testes Qt sem interface gráfica verificam ícones, menu, integridade dos temas e fundos.
+- Corrige o teste externo do GitHub Actions que podia esbarrar no limite de requisições API (usa token da própria execução).
 
-Para testar: instale a beta 5 por cima da versão atual uma única vez. Abra Atualizações > Verificar atualizações agora e autorize a beta 6. Aguarde o fechamento, a instalação silenciosa e a reabertura automática.
+**Atualização de teste:** Se você já tem a versão 0.6.0-beta.6, abra **Atualizações → Verificar atualizações agora**, deixe **Beta e estável** selecionado e confirme a atualização para a beta.7. O AURORA deve baixar, fechar, instalar silenciosamente e reabrir sozinho. Os dados locais são mantidos.
 
-Esta beta não altera a biblioteca IPTV.
+Versão beta. Não há alterações no mecanismo principal de streaming/EPG.

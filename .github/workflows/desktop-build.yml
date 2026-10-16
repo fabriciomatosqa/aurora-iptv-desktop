@@ -42,6 +42,8 @@ jobs:
       - name: Verify real GitHub installer download (bytes and SHA-256)
         shell: pwsh
         timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python .github/scripts/verify-release-download.py
       - name: Install Inno Setup
         shell: pwsh
