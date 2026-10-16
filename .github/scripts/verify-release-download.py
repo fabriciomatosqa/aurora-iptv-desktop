@@ -4,6 +4,8 @@ Unlike the synthetic unit tests, this hits the same GitHub Releases URLs that
 the installed AURORA uses. Only official public releases are considered.
 """
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tempfile import TemporaryDirectory
 from time import monotonic
 
