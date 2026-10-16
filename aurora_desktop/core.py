@@ -219,8 +219,8 @@ class Library:
         with self.connect() as db:
             db.execute('DELETE FROM playlists WHERE id=?', (playlist_id,))
 
-    def import_playlist(self, playlist_id: int, source: str | None = None) -> int:
-        """Atomic catalog replacement: a failed download keeps the old catalog."""
+    def import_playlist(self, playlist_id: int, source: str | None = None, *, merge: bool = False) -> int:
+        """Atomically import a catalog. Merge keeps yesterday's entries on refresh."""
         with self.connect() as db:
             rec = db.execute('SELECT source FROM playlists WHERE id=?', (playlist_id,)).fetchone()
             if not rec:
@@ -248,8 +248,9 @@ class Library:
                 db.executemany('INSERT OR REPLACE INTO staging VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', pending)
             if total == 0:
                 raise ValueError('A lista não contém entradas M3U válidas. Seu catálogo anterior foi preservado.')
-            db.execute('DELETE FROM items WHERE playlist_id=?', (playlist_id,))
-            db.execute('''INSERT INTO items (playlist_id,key,title,url,group_name,kind,logo,series_name,season,episode,tvg_id,type_hint)
+            if not merge:
+                db.execute('DELETE FROM items WHERE playlist_id=?', (playlist_id,))
+            db.execute('''INSERT OR REPLACE INTO items (playlist_id,key,title,url,group_name,kind,logo,series_name,season,episode,tvg_id,type_hint)
                           SELECT playlist_id,key,title,url,group_name,kind,logo,series_name,season,episode,tvg_id,type_hint FROM staging''')
             db.execute('UPDATE playlists SET updated_at=CURRENT_TIMESTAMP WHERE id=?', (playlist_id,))
             db.commit()
