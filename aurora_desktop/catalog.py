@@ -456,14 +456,12 @@ class LibraryV2(Library):
 
     @staticmethod
     def _linked_football_source() -> str:
-        # The real playlist must contain the channel; do not display phantom games.
-        return """LEFT JOIN items i ON i.rowid=(
-            SELECT rowid FROM items
-            WHERE playlist_id=f.playlist_id AND kind='live' AND f.channel_id<>''
-                AND (tvg_id=f.channel_id OR title=f.channel_id)
-            ORDER BY CASE WHEN tvg_id=f.channel_id THEN 0 ELSE 1 END
-            LIMIT 1
-        )"""
+        # SQLite cannot reliably resolve outer aliases inside a nested JOIN
+        # subquery. Use an ordinary join and deduplicate with row_number.
+        return """JOIN items i
+            ON i.playlist_id=f.playlist_id AND i.kind='live'
+            AND f.channel_id<>''
+            AND (i.tvg_id=f.channel_id OR i.title=f.channel_id)"""
 
     def football(self, playlist_id: int, category: str | None = None, search: str = "",
                  limit: int = 70, offset: int = 0) -> list[dict]:
@@ -478,16 +476,23 @@ class LibraryV2(Library):
         if search:
             where.append("f.title LIKE ?")
             args.append(f"%{search}%")
-        sql = f"""SELECT f.*, i.title AS channel_title, i.url, i.key, i.logo, 'football' AS kind
+        sql = f"""SELECT * FROM (
+            SELECT f.*, i.title AS channel_title, i.url, i.key, i.logo,
+                'football' AS kind,
+                ROW_NUMBER() OVER (
+                    PARTITION BY f.playlist_id,f.channel_id,f.start,f.title
+                    ORDER BY CASE WHEN i.tvg_id=f.channel_id THEN 0 ELSE 1 END,i.rowid
+                ) AS channel_rank
             FROM football_events f {self._linked_football_source()}
             WHERE {' AND '.join(where)}
-            ORDER BY datetime(f.start) ASC LIMIT ? OFFSET ?"""
+        ) WHERE channel_rank=1
+        ORDER BY datetime(start) ASC LIMIT ? OFFSET ?"""
         with self.connect() as db:
             return [dict(r) for r in db.execute(sql,(*args,limit,offset))]
 
     def football_categories(self, playlist_id: int) -> list[dict]:
         threshold = (datetime.now().astimezone() - timedelta(hours=1)).isoformat()
-        sql = f"""SELECT f.competition AS title,COUNT(*) AS total
+        sql = f"""SELECT f.competition AS title,COUNT(DISTINCT f.rowid) AS total
             FROM football_events f {self._linked_football_source()}
             WHERE f.playlist_id=? AND datetime(f.end)>datetime(?) AND i.key IS NOT NULL
             GROUP BY f.competition ORDER BY f.competition"""
