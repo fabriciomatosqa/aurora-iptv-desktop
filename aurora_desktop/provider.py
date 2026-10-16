@@ -56,3 +56,31 @@ def get_provider_category_kinds(source: str) -> dict[str, str]:
             # A bad category API cannot disable the user's playable M3U.
             continue
     return categories
+
+
+def get_provider_series_posters(source: str) -> dict[str, str]:
+    """Android ProviderApi.get_series parity: use only exact provider titles.
+
+    Do not infer a poster from similar titles, as that leads to the wrong series.
+    The response is size bounded; oversized providers still load their M3U.
+    """
+    url = provider_api_endpoint(source, "get_series")
+    if not url:
+        return {}
+    try:
+        rows = _read_small_json(url, maximum=18 * 1024 * 1024)
+    except (requests.RequestException, ValueError, TypeError, UnicodeError):
+        return {}
+    if not isinstance(rows, list):
+        return {}
+    posters = {}
+    for row in rows[:30_000]:
+        if not isinstance(row, dict):
+            continue
+        title, cover = row.get("name"), row.get("cover")
+        if not isinstance(title,str) or not isinstance(cover,str):
+            continue
+        if not title.strip() or not cover.startswith(("http://", "https://")):
+            continue
+        posters[normalized(title)] = cover
+    return posters
