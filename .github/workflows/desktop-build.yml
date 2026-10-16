@@ -18,6 +18,7 @@ on:
       - 'build_version.py'
       - 'requirements*.txt'
       - 'build_windows.ps1'
+      - '.github/scripts/**'
       - 'build_linux.sh'
       - 'installer_windows.iss'
       - '.github/workflows/desktop-build.yml'
@@ -44,6 +45,10 @@ jobs:
       - name: Build EXE and installer
         shell: pwsh
         run: ./build_windows.ps1
+      - name: Verify real silent install and restart
+        shell: pwsh
+        timeout-minutes: 6
+        run: ./.github/scripts/test-silent-update.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: AURORA-IPTV-Windows-Setup
