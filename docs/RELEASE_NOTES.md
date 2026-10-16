@@ -1,18 +1,12 @@
-# AURORA IPTV Desktop 0.6.0 beta 2
+# AURORA IPTV Desktop 0.6.0 beta 3
 
-Esta segunda beta permite testar a atualização da beta 1 sem o assistente de instalação e mantém o sistema de **atualização pelo GitHub Releases**:
+Correcao do fluxo de atualizacao silenciosa no Windows:
 
-- O aplicativo apresenta a versão instalada na janela e no menu Atualizações.
-- Verifica novas versões automaticamente no lançamento (com intervalo de 24 horas) e permite consulta manual.
-- Permite escolher entre canal **Estável** ou **Beta + Estável**.
-- No Windows instalado, após clicar em **Atualizar agora**, baixa, verifica SHA-256, inicia o instalador Inno Setup em modo silencioso e fecha o aplicativo. **Sem assistente de Avançar, sem desinstalar manualmente.**
-- Reaproveita o mesmo identificador de instalação para preservar dados do usuário.
-- No Linux, apresenta a versão disponível e abre a página oficial de download, pois instalações DEB podem exigir permissão administrativa.
-- Builds Windows e Linux passam a publicar artefatos no GitHub Releases após os testes concluírem com sucesso.
-- Releases e tags anteriores não são sobrescritos; as versões de teste são marcadas como pre-release.
-- Versões estáveis exigem aprovação explícita via workflow manual.
-- Metadados de versão do aplicativo Windows e do pacote DEB usam a mesma fonte central.
+- Remove "Historico de versoes" do menu Atualizacoes (os Releases antigos permanecem preservados no GitHub).
+- Ao aprovar uma atualizacao: baixa todo o instalador, verifica SHA-256, fecha o AURORA, aguarda a saida do processo, instala sem assistente e reabre a nova versao automaticamente.
+- Usa um auxiliar PowerShell separado da pasta instalada para nao bloquear a substituicao do executavel.
+- Grava status e log na pasta de atualizacoes para diagnosticar falhas; apresenta o resultado quando o AURORA reabre.
+- Mantem as playlists, favoritos e configuracoes locais.
+- E uma versao beta: avisos de seguranca do Windows nao podem ser ignorados automaticamente.
 
-**Observações:** a migração inicial da versão 0.5 para a 0.6 exige uma única instalação manual; a 0.5 ainda não possui o atualizador integrado. O Windows pode exibir alertas de segurança do próprio sistema (SmartScreen/antivírus), que não podem ser ignorados pelo aplicativo.
-
-Esta é uma versão **beta**. Ela não corrige todas as limitações anteriores de reprodução, metadados e futebol.
+Como a beta 2 tem problema no atualizador, instale a beta 3 uma vez pelo GitHub. Teste a atualizacao beta 3 -> beta 4 pelo proprio aplicativo quando a proxima beta estiver disponivel.

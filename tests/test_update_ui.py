@@ -20,5 +20,6 @@ def test_update_menu_displays_actual_installed_version(tmp_path,monkeypatch):
         updates=next(menu for menu in menus if menu.title()=="Atualizações")
         assert any(__version__ in action.text() for action in updates.actions())
         assert any("Verificar atualizações" in action.text() for action in updates.actions())
+        assert not any("Histórico" in action.text() for action in updates.actions())
     finally:
         window.close()

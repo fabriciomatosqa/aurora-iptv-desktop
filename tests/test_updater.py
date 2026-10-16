@@ -118,18 +118,60 @@ def test_download_rejects_untrusted_redirect_and_cancel(tmp_path):
             FakeResponse(body,"https://objects.githubusercontent.com/data",binary=True)),cancelled=lambda:True)
 
 
-def test_silent_command_launches_without_wizard(tmp_path,monkeypatch):
+def test_silent_update_stages_detached_helper_and_waits_for_parent(tmp_path,monkeypatch):
     installer=tmp_path/"AURORA-IPTV-Desktop-Setup.exe"
     installer.write_bytes(b"MZ")
+    installed=tmp_path/"Installed"/"AURORA-IPTV.exe"
+    installed.parent.mkdir()
+    installed.write_bytes(b"MZ")
+    helper=tmp_path/"apply_update.ps1"
+    helper.write_text("# Script fixture",encoding="utf-8")
     monkeypatch.setattr(sys,"platform","win32")
     monkeypatch.setattr(sys,"frozen",True,raising=False)
+    monkeypatch.setenv("LOCALAPPDATA",str(tmp_path))
     calls=[]
-    launch_windows_silent(installer,popen=lambda *args,**kwargs:calls.append((args,kwargs)))
+    status=launch_windows_silent(
+        installer, installed_exe=installed, helper_source=helper,
+        parent_pid=12345, target_version="0.6.0-beta.4",
+        popen=lambda *args,**kwargs:calls.append((args,kwargs)))
     assert len(calls)==1
-    command=calls[0][0][0]
-    assert command[0]==str(installer)
-    assert set(WINDOWS_SILENT_ARGS).issubset(command[1:])
-    assert "/VERYSILENT" in command and "/NORESTART" in command
+    cmd=calls[0][0][0]
+    assert "powershell.exe" in cmd[0].lower()
+    assert "-File" in cmd
+    assert "-ParentProcessId" in cmd
+    assert "12345" in cmd
+    assert "-ExpectedVersion" in cmd
+    assert "0.6.0-beta.4" in cmd
+    assert str(installer) in cmd
+    assert str(installed) in cmd
+    assert not any(x.startswith("/VERYSILENT") for x in cmd)
+    staged=tmp_path/"AURORA IPTV"/"updates"/"aurora-apply-update.ps1"
+    assert staged.read_text(encoding="utf-8")=="# Script fixture"
+    assert status.name=="update-status.json"
+    assert status.parent==staged.parent
+
+
+def test_real_helper_waits_installs_then_reopens():
+    from aurora_desktop.updater import _updater_script
+    source=_updater_script().read_text(encoding="utf-8")
+    assert "Get-Process -Id $ParentProcessId" in source
+    assert "Start-Process -FilePath $Installer" in source
+    assert "-Wait -PassThru" in source
+    assert "Start-Process -FilePath $InstalledExe" in source
+    for flag in WINDOWS_SILENT_ARGS:
+        assert flag in source
+
+
+def test_update_status_is_consumed_once(tmp_path,monkeypatch):
+    from aurora_desktop.updater import take_update_status
+    monkeypatch.setattr(sys,"platform","win32")
+    monkeypatch.setenv("LOCALAPPDATA",str(tmp_path))
+    state=tmp_path/"AURORA IPTV"/"updates"/"update-status.json"
+    state.parent.mkdir(parents=True)
+    state.write_text('{"status":"ok","version":"0.6.0-beta.4","exit_code":0}',encoding="utf-8")
+    assert take_update_status()["version"]=="0.6.0-beta.4"
+    assert take_update_status() is None
+
 
 
 def test_single_version_source_for_windows_and_debian(tmp_path):

@@ -3,7 +3,7 @@ Set-Location $PSScriptRoot
 python -m pip install -r requirements-build.txt
 python build_assets.py
 python build_version.py
-python -m PyInstaller --noconfirm --clean --windowed --onedir --name AURORA-IPTV --version-file build/windows_version.txt --icon assets/aurora_icon.ico --add-data "assets/aurora_icon.png;assets" --add-data "assets/aurora_banner.jpg;assets" run.py
+python -m PyInstaller --noconfirm --clean --windowed --onedir --name AURORA-IPTV --version-file build/windows_version.txt --icon assets/aurora_icon.ico --add-data "aurora_desktop/apply_update.ps1;aurora_desktop" --add-data "assets/aurora_icon.png;assets" --add-data "assets/aurora_banner.jpg;assets" run.py
 $inno = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 if (Test-Path $inno) {
     $appVersion = (python -c "from aurora_desktop import __version__; print(__version__)").Trim()
