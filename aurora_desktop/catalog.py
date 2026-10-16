@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import gzip
 import io
+from collections import defaultdict
 from pathlib import Path
 import re
 import sqlite3
@@ -16,7 +17,7 @@ from xml.etree.ElementTree import iterparse
 import requests
 
 from .core import ATTR, Library, playlist_lines, kind_of, episode_info, parse_extinf
-from .android_rules import normalized, movie_category
+from .android_rules import normalized, movie_category, football_details
 from .provider import get_provider_category_kinds
 
 GENRES = (
@@ -125,7 +126,7 @@ def xmltv_time(value: str) -> datetime | None:
         date += "00"
     try:
         stamp = datetime.strptime(date + (" " + offset if offset else ""), "%Y%m%d%H%M%S %z" if offset else "%Y%m%d%H%M%S")
-        return stamp.astimezone() if offset else stamp.astimezone()
+        return stamp.astimezone() if offset else stamp.replace(tzinfo=timezone.utc).astimezone()
     except ValueError:
         return None
 
@@ -192,7 +193,7 @@ def _read_xmltv(source: str):
         except StopIteration:
             return
         for event, element in context:
-            if event == "end" and element.tag == "programme":
+            if event == "end" and element.tag in ("programme", "channel"):
                 yield element
                 root.clear()
 
@@ -232,6 +233,9 @@ class LibraryV2(Library):
                     PRIMARY KEY (playlist_id,normalized_name)
                 );
             """)
+            fcols = {r["name"] for r in db.execute("PRAGMA table_info(football_events)")}
+            if "broadcast" not in fcols:
+                db.execute("ALTER TABLE football_events ADD COLUMN broadcast TEXT NOT NULL DEFAULT 'unknown'")
 
     def import_playlist(self, playlist_id: int, source: str | None = None) -> int:
         count = super().import_playlist(playlist_id, source)
@@ -338,30 +342,87 @@ class LibraryV2(Library):
             return r["epg_url"] if r else ""
 
     def import_football(self, playlist_id: int) -> int:
-        """Guide dates come exclusively from XMLTV. Never synthesize kickoff times."""
+        """Android guide parity: match real broadcasts, detect replay, prefer tvg-id."""
         epg_url = self.get_epg_url(playlist_id)
         if not epg_url:
-            raise ValueError("Sua playlist não informou XMLTV. Configure o EPG ou consulte os canais esportivos disponíveis.")
+            raise ValueError("Sua playlist não informou XMLTV. Configure o EPG ou consulte os canais esportivos.")
         now = datetime.now().astimezone()
-        start_cutoff = now - timedelta(hours=3)
+        last_hour = now - timedelta(hours=1)
         end_cutoff = now + timedelta(days=7)
+        # Match channel display names only when they map unambiguously to M3U.
+        with self.connect() as db:
+            records = db.execute("""SELECT title,tvg_id FROM items
+                WHERE playlist_id=? AND kind='live'""",(playlist_id,)).fetchall()
+        aliases = defaultdict(set)
+        valid_ids = set()
+        for row in records:
+            if row["tvg_id"]:
+                valid_ids.add(row["tvg_id"])
+            name = re.sub(r"(?i)\b(?:fhd|uhd|hd|sd|4k|h265|h264|alt)\b|[\[\]]"," ",row["title"])
+            aliases[normalized(name)].add((row["tvg_id"] or row["title"]))
+        channel_map: dict[str,str] = {}
         events = []
         for elem in _read_xmltv(epg_url):
-            time = xmltv_time(elem.get("start", ""))
-            if time and start_cutoff <= time <= end_cutoff:
-                title = next((c.text or "" for c in elem if c.tag == "title"), "").strip()
-                desc = next((c.text or "" for c in elem if c.tag == "desc"), "").strip()
-                if title and (MATCH.search(title) or (FOOTBALL.search(title) and MATCH.search(desc))):
-                    name = title if MATCH.search(title) else desc[:140]
-                    comp = title if name != title else "Jogos"
-                    events.append((playlist_id,elem.get("channel",""),time.isoformat(),
-                                   (xmltv_time(elem.get("stop","")) or time).isoformat(),name,comp))
+            if elem.tag == "channel":
+                xml_id = elem.get("id","")
+                if xml_id and xml_id not in valid_ids:
+                    matches = set()
+                    for display in elem.findall("display-name"):
+                        name = re.sub(r"(?i)\b(?:fhd|uhd|hd|sd|4k|h265|h264|alt)\b|[\[\]]"," ",display.text or "")
+                        matches.update(aliases.get(normalized(name),set()))
+                    if len(matches) == 1:
+                        channel_map[xml_id] = next(iter(matches))
+                elem.clear()
+                continue
+            if elem.tag != "programme":
+                elem.clear()
+                continue
+            begin = xmltv_time(elem.get("start",""))
+            stop = xmltv_time(elem.get("stop",""))
+            if not begin or not (begin <= end_cutoff and (stop or begin+timedelta(hours=2)) > last_hour):
+                elem.clear()
+                continue
+            title = next(((c.text or "") for c in elem if c.tag == "title"), "").strip()
+            subtitle = next(((c.text or "") for c in elem if c.tag == "sub-title"), "").strip()
+            category = " ".join((c.text or "") for c in elem if c.tag == "category").strip()
+            desc = next(((c.text or "") for c in elem if c.tag == "desc"), "").strip()
+            name = title if MATCH.search(title) else (subtitle if MATCH.search(subtitle) else desc[:160])
+            details = football_details(name,category or title)
+            # Keep supporting existing XMLTV feeds with minimal titles and no category.
+            if details is None and not category and not FOOTBALL.search(title) and not MATCH.search(title):
+                elem.clear()
+                continue
+            if details is None and not MATCH.search(name):
+                elem.clear()
+                continue
+            if not name:
+                elem.clear()
+                continue
+            if details is None and re.search(
+                r"(?i)\b(?:nfl|nba|basquete|rugby|ufc|futsal|volei|t[eê]nis)\b", title+" "+desc
+            ):
+                elem.clear()
+                continue
+            competition = (details.competition if details else "") or category or "Jogos"
+            replay = any(k in normalized(title+" "+category) for k in
+                         ("reprise", "replay", "repeticao", "reexibicao"))
+            live = "ao vivo" in normalized(title+" "+category) or elem.find("live") is not None
+            if elem.find("previously-shown") is not None:
+                replay=True
+            broadcast = "replay" if replay else "live" if live else "unknown"
+            external_id = elem.get("channel","")
+            channel = channel_map.get(external_id,external_id)
+            events.append((playlist_id,channel,begin.isoformat(),
+                           (stop or begin+timedelta(hours=2)).isoformat(),
+                           name,competition,broadcast))
             elem.clear()
-            if len(events) > 15000:
-                raise ValueError("EPG retornou jogos demais. Verifique a origem XMLTV.")
+            if len(events) > 15_000:
+                raise ValueError("O guia contém partidas demais; verifique a fonte XMLTV.")
         with self.connect() as db:
             db.execute("DELETE FROM football_events WHERE playlist_id=?", (playlist_id,))
-            db.executemany("INSERT OR REPLACE INTO football_events VALUES (?,?,?,?,?,?)", events)
+            db.executemany("""INSERT OR REPLACE INTO football_events
+                (playlist_id,channel_id,start,end,title,competition,broadcast)
+                VALUES (?,?,?,?,?,?,?)""", events)
         return len(events)
 
     def football(self, playlist_id: int, category: str | None = None, search: str = "",
