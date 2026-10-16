@@ -1,4 +1,4 @@
-"""Windows CI: download an actual published GitHub EXE and verify ALL bytes/SHA-256.
+"""CI: download actual published GitHub installers and verify ALL bytes/SHA-256.
 
 Unlike the synthetic unit tests, this hits the same GitHub Releases URLs that
 the installed AURORA uses. Only official public releases are considered.
@@ -19,12 +19,15 @@ def main():
     token=os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if token:
         client.headers["Authorization"]="Bearer "+token
-    release = discover_release(current="0.6.0-beta.4", channel="beta", platform="windows",client=client)
+    platform = "linux" if "--linux" in sys.argv else "windows"
+    baseline = "0.6.0-beta.7" if platform == "linux" else "0.6.0-beta.4"
+    release = discover_release(current=baseline, channel="beta", platform=platform,client=client)
     if release is None or release.installer is None:
         raise RuntimeError("No valid newer GitHub Release installer was discovered")
     asset = release.installer
-    if not (40_000_000 < asset.size < 150_000_000):
-        raise RuntimeError("Downloaded asset is not a full-size Windows installer")
+    minimum = 60_000_000 if platform == "linux" else 40_000_000
+    if not (minimum < asset.size < 150_000_000):
+        raise RuntimeError(f"Downloaded asset is not a full-size {platform} installer")
     print(f"Live GitHub asset: {release.tag}, expected {asset.size} bytes",flush=True)
     started = monotonic()
     progress = [0]
@@ -37,8 +40,10 @@ def main():
         actual = result.stat().st_size
         if actual != asset.size:
             raise RuntimeError(f"Incomplete file: expected {asset.size}, got {actual}")
+        if platform == "linux" and result.open("rb").read(8) != b"!<arch>\n":
+            raise RuntimeError("Verified file does not have a Debian ar package header")
         elapsed = monotonic() - started
-        print(f"Verified REAL Windows installer from GitHub: {actual} bytes,"
+        print(f"Verified REAL {platform} installer from GitHub: {actual} bytes,"
               f" SHA-256 matched, {elapsed:.2f}s", flush=True)
 
 
