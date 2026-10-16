@@ -112,7 +112,7 @@ def playlist_lines(source: str) -> Iterator[str]:
             for raw in response.iter_lines(chunk_size=65536):
                 if raw:
                     yield raw.decode('utf-8-sig', errors='replace')
-    elif not parsed.scheme or parsed.scheme == 'file':
+    elif not parsed.scheme or parsed.scheme == 'file' or Path(source).is_absolute():
         file = Path(source) if parsed.scheme != 'file' else Path(parsed.path)
         with file.open('r', encoding='utf-8-sig', errors='replace') as stream:
             yield from stream
@@ -175,7 +175,7 @@ class Library:
         if not name or not source:
             raise ValueError('Informe nome e endereço da lista.')
         scheme = urlsplit(source).scheme.lower()
-        if scheme not in ('http', 'https', 'file', ''):
+        if scheme not in ('http', 'https', 'file', '') and not Path(source).is_absolute():
             raise ValueError('Use HTTP, HTTPS ou caminho de arquivo local.')
         with self.connect() as db:
             cur = db.execute('INSERT INTO playlists (name,source) VALUES (?,?)', (name, source))
@@ -184,7 +184,7 @@ class Library:
     def update_playlist(self, playlist_id: int, name: str, source: str) -> None:
         if not name.strip() or not source.strip():
             raise ValueError('Nome e endereço não podem ficar vazios.')
-        if urlsplit(source).scheme.lower() not in ('http', 'https', 'file', ''):
+        if urlsplit(source).scheme.lower() not in ('http', 'https', 'file', '') and not Path(source).is_absolute():
             raise ValueError('Endereço inválido.')
         with self.connect() as db:
             db.execute('UPDATE playlists SET name=?,source=? WHERE id=?', (name.strip(), source.strip(), playlist_id))
