@@ -520,11 +520,12 @@ class MainWindow(legacy.MainWindow):
         else:
             self.subtitle.setText("Escolha uma categoria; a lista carrega conforme você rola.")
         if self.playlist_id is not None and self.mode in ("live","movie","series") and self.playlist_id not in self._indexed:
-            # First start after update indexes old catalog in place without erasing favorites.
-            self.status.setText("Organizando categorias da playlist existente...")
-            QApplication.processEvents()
-            self.library.ensure_categories(self.playlist_id)
-            self._indexed.add(self.playlist_id)
+            self.results.clear()
+            self.groups.clear()
+            self.page.setText("Organizando as categorias em segundo plano...")
+            if self.playlist_id not in self._index_error:
+                self._start_index(self.playlist_id)
+            return
         if self.mode in ("live","movie","series") and self.playlist_id is not None:
             categories = self.library.categories(self.playlist_id,self.mode)
             choices = [(f"Todos ({sum(g['total'] for g in categories):,})",None)]
@@ -701,6 +702,42 @@ class MainWindow(legacy.MainWindow):
         if epg and not self.library.football_categories(pid):
             QTimer.singleShot(50, self._update_guide)
 
+    def _start_index(self, playlist_id):
+        if self.index_thread is not None:
+            return
+        thread = QThread(self)
+        worker = IndexWorker(self.library.path, playlist_id)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._index_ok)
+        worker.failed.connect(self._index_failed)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._index_done)
+        self.index_thread = thread
+        self.index_worker = worker
+        thread.start()
+
+    def _index_ok(self, playlist_id):
+        self._indexed.add(playlist_id)
+        if self.playlist_id == playlist_id:
+            self.status.setText("Catálogo organizado.")
+            self._refresh()
+
+    def _index_failed(self, playlist_id):
+        self._index_error.add(playlist_id)
+        self.status.setText("Não foi possível reorganizar o catálogo. Atualize a playlist.")
+
+    def _index_done(self):
+        self.index_thread = None
+        self.index_worker = None
+        if (self.playlist_id is not None and self.mode in ("live","movie","series")
+                and self.playlist_id not in self._indexed
+                and self.playlist_id not in self._index_error):
+            self._refresh()
+
     def _configure_guide(self):
         if self.playlist_id is None:
             QMessageBox.information(self,"AURORA IPTV","Adicione uma playlist primeiro.")
@@ -760,6 +797,10 @@ class MainWindow(legacy.MainWindow):
         self._refresh()
 
     def closeEvent(self,event):
+        if self.index_thread and self.index_thread.isRunning():
+            QMessageBox.information(self,"Catálogo","Aguarde a organização dos conteúdos.")
+            event.ignore()
+            return
         if self.guide_thread and self.guide_thread.isRunning():
             QMessageBox.information(self,"EPG em andamento","Aguarde a conclusão da atualização do guia.")
             event.ignore()
