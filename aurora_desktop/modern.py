@@ -71,29 +71,23 @@ class PlayerSplash(QFrame):
     def __init__(self):
         super().__init__()
         self.setObjectName("playerSplash")
-        self.setStyleSheet("""
-            QFrame#playerSplash {
-                background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
-                    stop:0 #0b2639,stop:0.40 #174c60,stop:0.75 #253867,stop:1 #21143e);
-                border:1px solid #37717c;border-radius:14px;
-            }
-        """)
+        # Colors are supplied by the global theme, including light mode.
         layout = QVBoxLayout(self)
         layout.setContentsMargins(26,24,26,24)
         layout.setSpacing(13)
         layout.addStretch(2)
         emblem = QLabel("✦")
         emblem.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        emblem.setStyleSheet("background:transparent;color:#76f3d6;font-size:66px;")
+        emblem.setObjectName("splashEmblem")
         layout.addWidget(emblem)
         heading = QLabel("AURORA IPTV")
         heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        heading.setStyleSheet("background:transparent;color:#f2ffff;font-size:29px;font-weight:900;")
+        heading.setObjectName("splashHeading")
         layout.addWidget(heading)
         description = QLabel("Escolha um canal, filme ou episódio para começar")
         description.setAlignment(Qt.AlignmentFlag.AlignCenter)
         description.setWordWrap(True)
-        description.setStyleSheet("background:transparent;color:#bee7e4;font-size:14px;")
+        description.setObjectName("splashDescription")
         layout.addWidget(description)
         layout.addStretch(2)
 
@@ -546,6 +540,24 @@ class MainWindow(legacy.MainWindow):
             }}
             QFrame#panel QLabel {{
                 background:transparent;
+            }}
+            QFrame#playerSplash {{
+                background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+                    stop:0 {'#133e56' if dark else '#d8f4f0'},
+                    stop:0.45 {'#1a4d67' if dark else '#d4e8f9'},
+                    stop:0.78 {'#273960' if dark else '#e6ddfa'},
+                    stop:1 {'#271d4e' if dark else '#f6ecfc'});
+                border:1px solid {border};
+                border-radius:14px;
+            }}
+            QLabel#splashEmblem {{
+                color:{accent};font-size:64px;
+            }}
+            QLabel#splashHeading {{
+                color:{text};font-size:29px;font-weight:850;
+            }}
+            QLabel#splashDescription {{
+                color:{muted};font-size:14px;
             }}
             QLabel#brand {{
                 font-size:19px;font-weight:800;color:{accent};
