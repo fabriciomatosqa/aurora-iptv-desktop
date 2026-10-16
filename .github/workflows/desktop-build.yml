@@ -8,6 +8,7 @@ on:
       - 'aurora_desktop/**'
       - 'tests/**'
       - 'run.py'
+      - 'build_assets.py'
       - 'requirements*.txt'
       - 'build_windows.ps1'
       - 'build_linux.sh'

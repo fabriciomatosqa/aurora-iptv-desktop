@@ -1,5 +1,5 @@
 #define MyAppName "AURORA IPTV"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.2.0"
 #define MyAppExeName "AURORA-IPTV.exe"
 [Setup]
 AppId={{7E9AAB61-4913-4F3F-965F-3D7459381745}
@@ -14,6 +14,10 @@ OutputBaseFilename=AURORA-IPTV-Desktop-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+UsePreviousAppDir=yes
+CloseApplications=yes
+RestartApplications=yes
+SetupIconFile=assets\aurora_icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 [Files]
 Source: "dist\AURORA-IPTV\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion

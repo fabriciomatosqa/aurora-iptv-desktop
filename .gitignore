@@ -15,3 +15,6 @@ releases/
 .env
 .env.*
 *.log
+assets/aurora_icon.png
+assets/aurora_icon.ico
+assets/aurora_banner.jpg
