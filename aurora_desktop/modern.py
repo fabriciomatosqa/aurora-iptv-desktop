@@ -167,6 +167,23 @@ class GuideWorker(QObject):
             self.failed.emit(message)
 
 
+class IndexWorker(QObject):
+    finished = Signal(int)
+    failed = Signal(int)
+
+    def __init__(self, database, playlist_id):
+        super().__init__()
+        self.database = database
+        self.playlist_id = playlist_id
+
+    def run(self):
+        try:
+            LibraryV2(self.database).ensure_categories(self.playlist_id)
+            self.finished.emit(self.playlist_id)
+        except Exception:
+            self.failed.emit(self.playlist_id)
+
+
 class MainWindow(legacy.MainWindow):
     """Reuses the tested player and incremental importer from 0.1.0."""
 
@@ -380,6 +397,9 @@ class MainWindow(legacy.MainWindow):
         self._exhausted = False
         self._indexed = set()
         self._auto_guide_attempted = set()
+        self.index_thread = None
+        self.index_worker = None
+        self._index_error = set()
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.setInterval(240)
