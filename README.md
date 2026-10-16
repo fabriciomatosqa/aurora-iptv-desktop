@@ -1,36 +1,47 @@
-# ✦ AURORA IPTV — Desktop 0.1.0 beta
+# AURORA IPTV — Desktop 0.2.0 beta
 
-Aplicativo IPTV para **Windows e Linux**, com interface inspirada nas auroras boreais. É um projeto independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player), sem emulador e sem página web. Não contém listas, filmes, canais ou credenciais.
+Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
 
-## Recursos iniciais
+## Versão 0.2.0 — alterações
 
-- Importação de listas **M3U** via HTTP/HTTPS ou arquivo local, com múltiplas playlists.
-- Download em fluxo e importação incremental em **SQLite**, com paginação para catálogos grandes.
-- Navegação por **Ao vivo**, **Filmes** e **Séries**, busca e agrupamento dos episódios.
-- Favoritos por canal, filme e série inteira, separados por playlist.
-- Últimos conteúdos e retomada de reprodução em filmes e episódios.
-- Player integrado Qt Multimedia, controles, volume e tela cheia.
-- Temas **claro**, **escuro** e **conforme o sistema**; interface redimensionável.
-- Importação em thread separada. Falhas preservam o catálogo anterior.
+- **Três colunas**: navegação, categorias e títulos; player à direita.
+- **Ao vivo**: a segunda coluna agrupa versões dos canais (Globo, SBT, ESPN e outros).
+- **Filmes**: gêneros como Ação, Comédia, Terror, além dos grupos da própria lista.
+- **Séries**: grupos e plataformas identificados no M3U, sem inventar a origem quando não informada.
+- **Rolagem infinita** com lotes de 60 títulos, sem botões de próxima página.
+- **Logos e cartazes** da própria playlist (tvg-logo), com carregamento assíncrono e cache limitado.
+- **Futebol**: partidas, horários e canais fornecidos pelo guia XMLTV da lista; sem partidas ou horários inventados.
+- **Visual Aurora** com o logo e o banner oficiais do projeto [AURORA AutoFill](https://github.com/fabriciomatosqa/AURORA-AutoFill).
+- **Migração de dados da 0.1**: playlists, favoritos e posições são preservados no banco local.
 
-Esta é uma **beta**: nem todos os recursos da edição Android 1.10.0 foram portados.
+## Download e atualização
 
-## Onde baixar o instalador
+Acesse [GitHub Actions: compilar Desktop](https://github.com/fabriciomatosqa/aurora-iptv-desktop/actions/workflows/desktop-build.yml). Selecione a execução **concluída com sucesso** da versão 0.2 e, na parte inferior, em Artifacts, baixe:
 
-Abra a aba **[Actions](https://github.com/fabriciomatosqa/aurora-iptv-desktop/actions/workflows/desktop-build.yml)** e escolha uma execução **concluída com sucesso** do workflow **AURORA IPTV Desktop - builds**.
+- **AURORA-IPTV-Windows-Setup**: instalador .exe. Execute por cima da versão 0.1.0, na mesma pasta, sem desinstalar. O AppId do Inno Setup não mudou e a base local permanece em %LOCALAPPDATA%/AURORA IPTV.
+- **AURORA-IPTV-Linux**: .deb atualiza o pacote de mesmo nome aurora-iptv; inclui também uma distribuição portátil .tar.gz. Os dados locais permanecem em ~/.local/share/aurora-iptv.
 
-Na parte inferior da execução, em **Artifacts**, baixe:
+O instalador Windows pode solicitar o fechamento do aplicativo para substituir os executáveis. Os builds são testes de compilação, não equivalem a um teste final de reprodução real com seu provedor.
 
-- **AURORA-IPTV-Windows-Setup** — instalador .exe para Windows.
-- **AURORA-IPTV-Linux** — pacote .deb e distribuição portátil .tar.gz.
+## Futebol
 
-O GitHub pode exigir login para baixar os Artifacts. Enquanto a execução não concluir com sucesso, **não há instalador validado para download**. Os pacotes são produzidos em Windows e Ubuntu independentes. Teste a reprodução em computadores reais antes de tratar a versão como estável.
+1. Escolha sua playlist e clique em Futebol.
+2. O sistema tenta obter o endereço XMLTV informado no cabeçalho M3U (atributos x-tvg-url ou url-tvg).
+3. Se não houver um, clique em Configurar EPG e informe a URL XMLTV da sua playlist.
+4. Clique em Atualizar EPG Futebol para buscar a agenda.
+5. Dê duplo clique num confronto com canal associado para assistir.
+
+O EPG pode ser um XML ou XML.GZ e os horários são convertidos para o horário local do computador. Nesta beta, partidas precisam ter confronto identificável no XMLTV e o canal precisa ter o mesmo tvg-id. Ainda não há placares ESPN/FotMob da versão Android.
+
+## Recursos mantidos
+
+Múltiplas playlists, busca, favoritos de canais/filmes/séries inteiras, retomada de filmes e episódios, vídeo em tela cheia e temas claro/escuro/automático. O suporte a vídeo depende dos codecs e do Qt Multimedia do sistema.
 
 ## Executar pelo código
 
-Use **Python 3.12** (ou uma versão compatível).
+Requer Python 3.12 ou compatível.
 
-**Windows (PowerShell):**
+Windows PowerShell:
 
 ~~~powershell
 py -3.12 -m venv .venv
@@ -39,7 +50,7 @@ python -m pip install -r requirements.txt
 python run.py
 ~~~
 
-**Linux:**
+Linux:
 
 ~~~bash
 python3 -m venv .venv
@@ -48,45 +59,16 @@ python -m pip install -r requirements.txt
 python run.py
 ~~~
 
-No Linux, Qt Multimedia pode precisar das bibliotecas Qt/FFmpeg apropriadas à distribuição. Nem todo servidor ou codec funciona nativamente com Qt Multimedia.
-
-Para gerar os instaladores localmente, execute o script build_windows.ps1 no Windows com Inno Setup 6 instalado ou build_linux.sh em Debian/Ubuntu.
-
-## Como usar
-
-1. Abra **Configurações** e clique em **Adicionar URL M3U** ou **Importar arquivo local**.
-2. Escolha a lista no seletor da parte superior.
-3. Em **Ao vivo / Filmes / Séries**, dê duplo clique no conteúdo desejado.
-4. Em Favoritos, marque o filme, canal ou série inteira.
-5. Em **Configurações**, clique com o botão direito em uma playlist para editar, ativar ou excluir.
-6. Selecione o tema em **Configurações → Aparência**.
-
-## Privacidade
-
-As URLs das playlists e tokens inseridos são salvos **localmente, sem criptografia**, no SQLite (não são enviados para este repositório). No Windows, o banco fica em LOCALAPPDATA/AURORA IPTV/catalog.db; no Linux, em ~/.local/share/aurora-iptv/catalog.db (salvo configuração XDG).
-
-Nunca publique bancos de dados, listas privadas, senhas ou URLs com tokens no GitHub, issues ou logs. O arquivo .gitignore protege os arquivos locais de playlist e bancos mais comuns.
-
-## Testes e limitações
+Testes de catálogo:
 
 ~~~bash
+python -m compileall -q aurora_desktop tests run.py
 python -m pip install -r requirements.txt pytest
 python -m pytest tests -q
 ~~~
 
-O núcleo M3U/SQLite possui testes para parser, séries, favoritos, retomada, playlists isoladas, preservação após erro e paginação.
+Os scripts de compilação baixam o logo, o ícone e o banner do AutoFill usando um commit GitHub fixo e os embutem nos instaladores. Inno Setup 6 é exigido para compilar o .exe instalador.
 
-**Ainda faltam:** validação visual e de reprodução em Windows/Linux reais; EPG/XMLTV, futebol e placares, sinopses, cartazes, controle parental, traduções e atualizações automáticas. Esses módulos serão adicionados gradualmente.
+## Privacidade e limitações
 
-## Estrutura
-
-~~~text
-aurora_desktop/core.py       Parser M3U, SQLite, favoritos e retomada
-aurora_desktop/app.py        Interface, player, playlists e temas
-tests/test_core.py           Testes automatizados
-run.py                       Entrada da aplicação
-build_windows.ps1            Empacotamento Windows via PyInstaller
-installer_windows.iss        Instalador via Inno Setup
-build_linux.sh               Empacotamento Linux .deb e .tar.gz
-.github/workflows/           Compilação Windows/Ubuntu no GitHub Actions
-~~~
+URLs e eventuais credenciais embutidas nas playlists são armazenadas **localmente no SQLite, sem criptografia**. Não envie listas privadas, bancos de dados ou URLs com tokens para o GitHub. Esta beta ainda não possui EPG completo por canal, placares ao vivo, cartazes por metadados externos, sinopses, controle parental nem todas as traduções da edição Android. Use playlists de sua responsabilidade.
