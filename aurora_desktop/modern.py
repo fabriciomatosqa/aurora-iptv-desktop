@@ -646,7 +646,7 @@ class MainWindow(legacy.MainWindow):
                 self._exhausted = True
             else:
                 if self.mode == "football":
-                    rows = self.library.football(self.playlist_id,self.selected_category,query,limit=61,offset=self.offset)
+                    rows = self.library.football(self.playlist_id,None if query else self.selected_category,query,limit=61,offset=self.offset)
                     # Fallback to real sports channels when XMLTV gives no events.
                     if not rows and not self.library.football_categories(self.playlist_id):
                         rows = self.library.sport_channels(self.playlist_id,query,limit=160)
@@ -655,7 +655,7 @@ class MainWindow(legacy.MainWindow):
                     else:
                         self._exhausted = len(rows) <= 60
                 else:
-                    rows = self.library.browse(self.playlist_id,self.mode,self.selected_category,query,limit=61,offset=self.offset)
+                    rows = self.library.browse(self.playlist_id,self.mode,None if query else self.selected_category,query,limit=61,offset=self.offset)
                     self._exhausted = len(rows) <= 60
                 self._add_many(rows[:60] if not self._exhausted else rows)
                 self.offset += min(len(rows),60)
