@@ -122,7 +122,7 @@ class Covers(QObject):
         gradient.setColorAt(.52, QColor("#234167"))
         gradient.setColorAt(1, QColor("#302354"))
         painter.setPen(QColor("#386c7c"))
-        painter.setBrush(gradient)
+        painter.setBrush(QBrush(gradient))
         painter.drawRoundedRect(1, 1, 82, 102, 11, 11)
         symbol = icon_for(kind, 45).pixmap(QSize(45, 45))
         painter.drawPixmap((84-symbol.width())//2, (104-symbol.height())//2, symbol)
@@ -537,9 +537,6 @@ class MainWindow(legacy.MainWindow):
                     stop:0 {panel},stop:1 {panel_end});
                 border:1px solid {border};
                 border-radius:16px;
-            }}
-            QFrame#panel QLabel {{
-                background:transparent;
             }}
             QFrame#playerSplash {{
                 background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
