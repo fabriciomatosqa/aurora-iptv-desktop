@@ -2,6 +2,12 @@ name: AURORA IPTV Desktop - builds
 
 on:
   workflow_dispatch:
+    inputs:
+      approve_stable:
+        description: "Autorizar publicação estável (apenas versão sem beta/rc)"
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main]
     paths:
@@ -9,6 +15,7 @@ on:
       - 'tests/**'
       - 'run.py'
       - 'build_assets.py'
+      - 'build_version.py'
       - 'requirements*.txt'
       - 'build_windows.ps1'
       - 'build_linux.sh'
@@ -26,7 +33,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Test catalog
+      - name: Test catalog and updater
         shell: pwsh
         run: |
           python -m pip install -r requirements.txt pytest
@@ -52,7 +59,7 @@ jobs:
           python-version: '3.12'
       - name: Install OS libraries
         run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libpulse0 libdbus-1-3
-      - name: Test catalog
+      - name: Test catalog and updater
         run: |
           python -m pip install -r requirements.txt pytest
           python -m pytest tests -q
@@ -65,3 +72,58 @@ jobs:
             releases/*.deb
             releases/*.tar.gz
           if-no-files-found: error
+
+  publish-release:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.approve_stable)
+    needs: [windows, linux]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: AURORA-IPTV-*
+          path: release-assets
+          merge-multiple: true
+      - name: Publish immutable release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STABLE_APPROVAL: ${{ inputs.approve_stable }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(python -c "from aurora_desktop import __version__; print(__version__)")
+          TAG="v${VERSION}"
+          git fetch origin main
+          if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then
+            echo "New commits landed; avoid publishing older binaries under this version."
+            exit 0
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG exists; keep it and all prior versions unchanged."
+            exit 0
+          fi
+          test -f release-assets/AURORA-IPTV-Desktop-Setup.exe
+          test -f release-assets/AURORA-IPTV-Desktop-linux-x86_64.tar.gz
+          test -n "$(find release-assets -name 'aurora-iptv_*_amd64.deb' -print -quit)"
+          (cd release-assets && sha256sum AURORA-IPTV-Desktop-Setup.exe AURORA-IPTV-Desktop-linux-x86_64.tar.gz aurora-iptv_*_amd64.deb > SHA256SUMS.txt)
+          if [[ "$VERSION" == *-beta.* || "$VERSION" == *-rc.* ]]; then
+            gh release create "$TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "AURORA IPTV Desktop $VERSION (teste)" \
+              --notes-file docs/RELEASE_NOTES.md --prerelease --latest=false
+          else
+            if [ "$STABLE_APPROVAL" != "true" ]; then
+              echo "Stable releases require explicit workflow_dispatch approval."
+              exit 0
+            fi
+            gh release create "$TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "AURORA IPTV Desktop $VERSION" \
+              --notes-file docs/RELEASE_NOTES.md --latest=true
