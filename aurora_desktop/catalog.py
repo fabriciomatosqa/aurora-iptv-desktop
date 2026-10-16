@@ -91,7 +91,7 @@ def category_of(kind: str, title: str, group_name: str) -> str:
                 if re.search(pattern, group, re.IGNORECASE):
                     return provider
             stripped = re.sub(r"(?i)^\s*(s[eé]ries?|series|shows?)\s*(?:[|:/-]\s*)?", "", group).strip()
-            return stripped or "Outras séries"
+            return stripped or "Sem plataforma identificada"
         stripped = re.sub(r"(?i)^\s*(filmes?|movies?|vod|cinema)\s*(?:[|:/-]\s*)?", "", group).strip()
         return stripped or "Outros filmes"
     return "Outros"
