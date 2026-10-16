@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 from . import __version__
 from .updater import (
     RELEASES_PAGE, Release, UpdateError, discover_release, download_verified,
-    install_supported, launch_windows_silent, take_update_status
+    install_supported, launch_windows_silent, take_update_status, record_update_step
 )
 
 
@@ -70,6 +70,7 @@ class UpdateController(QObject):
         self._installed_file = None
         self._cancelled = False
         self._target_version = None
+        self._download_problem = None
 
     def attach_menu(self, menu_bar):
         menu = menu_bar.addMenu("Atualizações")
@@ -175,10 +176,14 @@ class UpdateController(QObject):
         self._installed_file=None
         self._cancelled=False
         self._target_version=release.version
+        self._download_problem=None
+        record_update_step("download-started", f"Preparando instalador de {release.installer.size} bytes", release.version)
         dialog=QProgressDialog("Baixando atualização verificada...","Cancelar",0,100,self.window)
         dialog.setWindowTitle(f"Atualizando para {release.version}")
         dialog.setMinimumDuration(0)
         dialog.setAutoClose(False)
+        dialog.setAutoReset(False)
+        dialog.setWindowModality(Qt.WindowModality.WindowModal)
         dialog.setValue(0)
         worker=DownloadWorker(release.installer,self)
         self.download_dialog=dialog
@@ -193,33 +198,63 @@ class UpdateController(QObject):
 
     def _progress(self, bytes_received, total):
         if self.download_dialog and total:
-            self.download_dialog.setValue(max(0,min(100,round(bytes_received*100/total))))
+            # 100% is shown only once SHA-256 is actually verified.
+            progress = max(0,min(99,int(bytes_received * 100 / total)))
+            self.download_dialog.setValue(progress)
+            self.download_dialog.setLabelText(
+                f"Baixando instalador: {bytes_received / 1048576:.1f} / "
+                f"{total / 1048576:.1f} MB")
 
     def _cancel(self):
         self._cancelled=True
+        record_update_step("cancelled", "Cancelamento solicitado pelo usuário", self._target_version)
         if self.downloader:
             self.downloader.abort.set()
 
     def _downloaded(self, filename: Path):
+        # download_verified() reached here only after byte count and SHA-256 match.
         self._installed_file=filename
+        record_update_step("download-verified", f"SHA-256 validado: {filename.stat().st_size} bytes", self._target_version)
+        if self.download_dialog:
+            self.download_dialog.setCancelButton(None)
+            self.download_dialog.setLabelText("Download completo e verificado. Preparando atualização...")
+            self.download_dialog.setValue(100)
 
     def _download_error(self, message):
-        if self._cancelled or message=="Download cancelado.":
-            self.window.status.setText("Download cancelado; versão atual preservada.")
-        else:
-            QMessageBox.warning(self.window,"AURORA IPTV · Download",message)
+        self._download_problem=message
+        record_update_step("download-failed", message, self._target_version)
 
     def _download_finished(self):
         worker=self.downloader
         self.downloader=None
         if worker:
             worker.deleteLater()
-        if self.download_dialog:
-            self.download_dialog.close()
-            self.download_dialog.deleteLater()
-            self.download_dialog=None
-        if not self._installed_file or self._cancelled:
+        dialog=self.download_dialog
+        self.download_dialog=None
+        if dialog:
+            # QProgressDialog.close() may emit canceled(). NEVER call it when
+            # finishing a verified download: the prior implementation set
+            # _cancelled=True here and silently skipped the installer.
+            try:
+                dialog.canceled.disconnect(self._cancel)
+            except (TypeError, RuntimeError):
+                pass
+            dialog.hide()
+            dialog.deleteLater()
+        if self._cancelled:
+            self.window.status.setText("Download cancelado; versão atual preservada.")
             self._installed_file=None
+            return
+        if self._download_problem:
+            QMessageBox.warning(self.window, "Falha ao baixar atualização",
+                                self._download_problem)
+            self.window.status.setText("Download não concluído. O aplicativo atual não foi alterado.")
+            self._installed_file=None
+            return
+        if not self._installed_file:
+            record_update_step("download-failed", "Download finalizado sem arquivo verificado", self._target_version)
+            QMessageBox.warning(self.window, "Falha ao baixar atualização",
+                                "O download não forneceu um instalador verificado. Nenhuma instalação foi iniciada.")
             return
         file=self._installed_file
         self._installed_file=None
@@ -231,8 +266,10 @@ class UpdateController(QObject):
                     "Conclua a importação ou a atualização do guia e tente novamente.")
                 return
         try:
+            record_update_step("helper-launch", "Arquivo verificado; iniciando instalador externo", self._target_version)
             launch_windows_silent(file, target_version=self._target_version)
         except UpdateError as exc:
+            record_update_step("helper-failed", str(exc), self._target_version)
             QMessageBox.warning(self.window,"AURORA IPTV · Instalação",str(exc))
             return
         self.window.status.setText("Download conferido. Fechando o AURORA para instalar e reabrir automaticamente.")
