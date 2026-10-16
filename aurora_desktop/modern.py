@@ -579,12 +579,20 @@ class MainWindow(legacy.MainWindow):
             else:
                 if self.mode == "football":
                     rows = self.library.football(self.playlist_id,self.selected_category,query,limit=61,offset=self.offset)
+                    # Fallback to real sports channels when XMLTV gives no events.
+                    if not rows and not self.library.football_categories(self.playlist_id):
+                        rows = self.library.sport_channels(self.playlist_id,query,limit=160)
+                        self._exhausted = True
+                        self.page.setText("Canais esportivos · configure o EPG para visualizar os jogos")
+                    else:
+                        self._exhausted = len(rows) <= 60
                 else:
                     rows = self.library.browse(self.playlist_id,self.mode,self.selected_category,query,limit=61,offset=self.offset)
-                self._exhausted = len(rows) <= 60
-                self._add_many(rows[:60])
+                    self._exhausted = len(rows) <= 60
+                self._add_many(rows[:60] if not self._exhausted else rows)
                 self.offset += min(len(rows),60)
-                self.page.setText(f"{self.offset:,} itens carregados · role para ver mais".replace(",","." ))
+                if self.mode != "football" or self.library.football_categories(self.playlist_id):
+                    self.page.setText(f"{self.offset:,} conteúdos · role para explorar".replace(",", "."))
             if not self.results.count():
                 self.page.setText("Nenhum conteúdo nesta categoria.")
         finally:
@@ -593,12 +601,14 @@ class MainWindow(legacy.MainWindow):
     def _add_many(self,rows):
         for r in rows:
             title = r.get("title","")
-            if self.mode == "football":
+            if self.mode == "football" and r.get("kind") == "football":
                 try:
                     dt = datetime.fromisoformat(r["start"]).strftime("%d/%m · %H:%M")
                 except (KeyError,ValueError):
                     dt = "Horário indisponível"
                 title = f"{dt}\n{title}\n{r.get('channel_title') or 'Canal sem correspondência'}"
+            elif r.get("kind") == "football_channel":
+                title = "CANAL ESPORTIVO  ·  " + title
             elif r.get("kind") == "series" and self.mode != "episodes":
                 title += f"\n{r.get('episodes',0)} episódios" if r.get("episodes") else ""
             elif self.mode == "episodes" and r.get("season") is not None:
@@ -622,6 +632,9 @@ class MainWindow(legacy.MainWindow):
     def _open(self,widget):
         row = widget.data(Qt.ItemDataRole.UserRole)
         if row.get("kind") in ("empty","playlist"):
+            return
+        if row.get("kind") == "football_channel":
+            self._start({**row,"kind":"live"})
             return
         if row.get("kind") == "football":
             if row.get("url"):
@@ -652,6 +665,14 @@ class MainWindow(legacy.MainWindow):
             self._configure_guide()
         else:
             super()._second_action()
+
+    def _maybe_load_guide(self):
+        pid = self.playlist_id
+        if not pid or pid in self._auto_guide_attempted:
+            return
+        self._auto_guide_attempted.add(pid)
+        if self.library.get_epg_url(pid) and not self.library.football_categories(pid):
+            QTimer.singleShot(50, self._update_guide)
 
     def _configure_guide(self):
         if self.playlist_id is None:
