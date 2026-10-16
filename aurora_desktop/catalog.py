@@ -301,8 +301,8 @@ class LibraryV2(Library):
             sql = f"""SELECT f.*, i.title AS channel_title, i.url, i.key, i.logo, 'football' AS kind
                 FROM football_events f LEFT JOIN items i ON i.rowid=(
                   SELECT rowid FROM items WHERE playlist_id=f.playlist_id
-                    AND kind='live' AND (tvg_id=f.channel_id OR title=f.channel_id)
-                    ORDER BY CASE WHEN tvg_id=f.channel_id THEN 0 ELSE 1 END LIMIT 1
+                    AND kind='live' AND f.channel_id<>'' AND (tvg_id=f.channel_id OR title=f.channel_id)
+                    ORDER BY CASE WHEN tvg_id<>'' THEN 0 ELSE 1 END LIMIT 1
                 )
                 WHERE {' AND '.join(where)} ORDER BY f.start ASC LIMIT ? OFFSET ?"""
             return [dict(r) for r in db.execute(sql,(*args,limit,offset))]
