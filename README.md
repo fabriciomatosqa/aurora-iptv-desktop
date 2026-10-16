@@ -1,8 +1,8 @@
-# AURORA IPTV — Desktop 0.3.0 beta
+# AURORA IPTV — Desktop 0.4.0 beta
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
 
-## Versão 0.3.0 — classificação e identidade visual
+## Versão 0.4.0 — classificação e identidade visual
 
 - Corrige playlists M3U com atributos EXTINF depois da vírgula (o título deixa de exibir textos `tvg-logo=`).
 - Reclassifica entradas antigas mantendo endereço da playlist, favoritos e progresso.

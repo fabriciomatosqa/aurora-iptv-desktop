@@ -27,7 +27,7 @@ Categories=AudioVideo;Video;Player;
 ENDDESKTOP
 cat > "$stage/DEBIAN/control" <<'ENDCONTROL'
 Package: aurora-iptv
-Version: 0.3.0
+Version: 0.4.0
 Section: video
 Priority: optional
 Architecture: amd64
@@ -36,5 +36,5 @@ Depends: libc6, libgl1, libegl1, libxkbcommon0
 Description: AURORA IPTV Desktop
  Player M3U para Windows e Linux. Nenhum conteudo incluido.
 ENDCONTROL
-dpkg-deb --root-owner-group --build "$stage" releases/aurora-iptv_0.3.0_amd64.deb
+dpkg-deb --root-owner-group --build "$stage" releases/aurora-iptv_0.4.0_amd64.deb
 echo 'Pacotes criados em releases/'
