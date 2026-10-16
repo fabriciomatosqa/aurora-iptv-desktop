@@ -110,29 +110,38 @@ class Covers(QObject):
         self.failed = set()
         self.generation = 0
         self.max_items = 250
-        self.blank = self.placeholder()
+        self.blanks = {kind:self.placeholder(kind) for kind in
+                       ("movie","series","live","football")}
 
-    def placeholder(self):
-        p = QPixmap(72,86)
-        p.fill(QColor("#18394b"))
-        painter = QPainter(p)
-        gradient = QLinearGradient(0,0,72,86)
-        gradient.setColorAt(0,QColor("#134a65"))
-        gradient.setColorAt(.55,QColor("#2a4172"))
-        gradient.setColorAt(1,QColor("#1b1c45"))
-        painter.fillRect(p.rect(),gradient)
-        painter.setPen(QColor("#7dffde"))
-        painter.setFont(QFont("Sans Serif",25,QFont.Weight.Bold))
-        painter.drawText(p.rect(),Qt.AlignmentFlag.AlignCenter,"✦")
+    def placeholder(self, kind: str = "movie"):
+        """A designed artwork tile rather than a generic diamond glyph."""
+        kind = {
+            "live": "live", "football_channel": "live", "football": "football",
+            "series": "series", "movie": "movie",
+        }.get(kind, "movie")
+        pixmap = QPixmap(84, 104)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        gradient = QLinearGradient(0, 0, 84, 104)
+        gradient.setColorAt(0, QColor("#1a4a66"))
+        gradient.setColorAt(.52, QColor("#234167"))
+        gradient.setColorAt(1, QColor("#302354"))
+        painter.setPen(QColor("#386c7c"))
+        painter.setBrush(gradient)
+        painter.drawRoundedRect(1, 1, 82, 102, 11, 11)
+        symbol = icon_for(kind, 45).pixmap(QSize(45, 45))
+        painter.drawPixmap((84-symbol.width())//2, (104-symbol.height())//2, symbol)
         painter.end()
-        return QIcon(p)
+        return QIcon(pixmap)
 
     def reset(self):
         self.generation += 1
         self.queue.clear()
 
-    def enqueue(self, item, url):
-        item.setIcon(self.blank)
+    def enqueue(self, item, url, kind: str = "movie"):
+        category = "live" if kind == "football_channel" else kind
+        item.setIcon(self.blanks.get(category, self.blanks["movie"]))
         if not url or not url.startswith(("https://","http://")):
             return
         if url in self.cache:
@@ -335,7 +344,8 @@ class MainWindow(legacy.MainWindow):
         self.search.textChanged.connect(self._search)
         content_layout.addWidget(self.search)
         self.results = QListWidget()
-        self.results.setIconSize(QSize(65,88))
+        self.results.setObjectName("results")
+        self.results.setIconSize(QSize(70,88))
         self.results.setUniformItemSizes(True)
         self.results.setSpacing(7)
         self.results.setWordWrap(True)
@@ -824,7 +834,7 @@ class MainWindow(legacy.MainWindow):
         item.setSizeHint(QSize(0,106))
         item.setToolTip(label.replace("\n", " — "))
         self.results.addItem(item)
-        self.covers.enqueue(item,record.get("logo",""))
+        self.covers.enqueue(item,record.get("logo",""),record.get("kind","movie"))
         return item
 
     def _load_items(self,reset=False):
