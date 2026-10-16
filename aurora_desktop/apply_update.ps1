@@ -42,8 +42,8 @@ try {
         exit 21
     }
     Save-UpdateStatus 'installing' 0 'Atualizacao silenciosa iniciada'
-    $args = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /NORESTARTAPPLICATIONS /SP- /LOG="' + $InstallLog + '"'
-    $process = Start-Process -FilePath $Installer -ArgumentList $args -Wait -PassThru -ErrorAction Stop
+    $installerArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /NORESTARTAPPLICATIONS /SP- /LOG="' + $InstallLog + '"'
+    $process = Start-Process -FilePath $Installer -ArgumentList $installerArgs -Wait -PassThru -ErrorAction Stop
     $result = [int]$process.ExitCode
     if ($result -ne 0) {
         Save-UpdateStatus 'failed' $result 'Instalador retornou codigo de erro'
