@@ -4,7 +4,7 @@ from urllib.parse import parse_qs, urlparse
 import sqlite3
 
 from aurora_desktop.core import parse_m3u, kind_of, parse_extinf
-from aurora_desktop.catalog import LibraryV2, category_of, epg_from_header
+from aurora_desktop.catalog import LibraryV2, category_of, epg_from_header, guess_xtream_epg
 
 
 def test_extinf_attributes_after_initial_comma():
@@ -83,7 +83,7 @@ def test_xtream_guide_url_discovery_no_remote_access(tmp_path):
     path = tmp_path / "iptv.m3u"
     path.write_text("#EXTM3U\n",encoding="utf-8")
     assert epg_from_header(str(path)) == ""
-    url = epg_from_header("https://example.org/get.php?username=demo&password=not-real&type=m3u_plus")
+    url = guess_xtream_epg("https://example.org/get.php?username=demo&password=not-real&type=m3u_plus")
     parsed=urlparse(url)
     assert parsed.path == "/xmltv.php"
     assert parse_qs(parsed.query) == {"username":["demo"], "password":["not-real"]}
