@@ -17,7 +17,7 @@ from xml.etree.ElementTree import iterparse
 import requests
 
 from .core import ATTR, Library, playlist_lines, kind_of, episode_info, parse_extinf
-from .android_rules import normalized, movie_category, football_details
+from .android_rules import normalized, movie_category, football_details, NON_FOOTBALL, NON_MATCH_PROGRAMMES
 from .provider import get_provider_category_kinds, get_provider_series_posters
 
 GENRES = (
@@ -243,7 +243,7 @@ class LibraryV2(Library):
                 db.execute("ALTER TABLE football_events ADD COLUMN broadcast TEXT NOT NULL DEFAULT 'unknown'")
 
     def import_playlist(self, playlist_id: int, source: str | None = None) -> int:
-        count = super().import_playlist(playlist_id, source)
+        count = super().import_playlist(playlist_id, source, merge=True)
         with self.connect() as db:
             r = db.execute("SELECT source,epg_url FROM playlists WHERE id=?", (playlist_id,)).fetchone()
         location = source or r["source"] if r else ""
@@ -325,11 +325,12 @@ class LibraryV2(Library):
                 sql = f"SELECT * FROM items WHERE {condition} ORDER BY title COLLATE NOCASE LIMIT ? OFFSET ?"
             rows = [dict(r) for r in db.execute(sql,(*args,limit,offset))]
             if kind == "series" and rows:
-                name_keys = [(row,normalized(row["title"])) for row in rows]
-                by_key = {r["normalized_title"]:r["cover"] for r in db.execute(
-                    "SELECT normalized_title,cover FROM provider_series_posters WHERE playlist_id=?",
-                    (playlist_id,))}
-                for row,key in name_keys:
+                keys = [normalized(row["title"]) for row in rows]
+                placeholders = ",".join("?" for _ in keys)
+                by_key = {r["normalized_title"]: r["cover"] for r in db.execute(
+                    f"SELECT normalized_title,cover FROM provider_series_posters WHERE playlist_id=? AND normalized_title IN ({placeholders})",
+                    (playlist_id, *keys))}
+                for row,key in zip(rows,keys):
                     if key in by_key:
                         row["logo"] = by_key[key]
             return rows
@@ -408,6 +409,11 @@ class LibraryV2(Library):
             desc = next(((c.text or "") for c in elem if c.tag == "desc"), "").strip()
             name = title if MATCH.search(title) else (subtitle if MATCH.search(subtitle) else desc[:160])
             details = football_details(name,category or title)
+            # Never treat other sports, highlight shows or commentary as soccer.
+            words = normalized(title + " " + subtitle + " " + category + " " + desc[:160])
+            if NON_FOOTBALL.search(words) or NON_MATCH_PROGRAMMES.search(normalized(title)):
+                elem.clear()
+                continue
             # Keep supporting existing XMLTV feeds with minimal titles and no category.
             if details is None and not category and not FOOTBALL.search(title) and not MATCH.search(title):
                 elem.clear()
@@ -421,9 +427,9 @@ class LibraryV2(Library):
             if not name:
                 elem.clear()
                 continue
-            if details is None and re.search(
-                r"(?i)\b(?:nfl|nba|basquete|rugby|ufc|futsal|volei|t[eê]nis)\b", title+" "+desc+" "+category
-            ):
+            channel_id = elem.get("channel", "")
+            if details is None and channel_id not in valid_ids and channel_id not in channel_map:
+                # A generic "A x B" with no playable source is not enough evidence.
                 elem.clear()
                 continue
             competition = (details.competition if details else "") or category or "Jogos"
@@ -448,31 +454,45 @@ class LibraryV2(Library):
                 VALUES (?,?,?,?,?,?,?)""", events)
         return len(events)
 
+    @staticmethod
+    def _linked_football_source() -> str:
+        # The real playlist must contain the channel; do not display phantom games.
+        return """JOIN items i ON i.rowid=(
+            SELECT rowid FROM items
+            WHERE playlist_id=f.playlist_id AND kind='live' AND f.channel_id<>''
+                AND (tvg_id=f.channel_id OR title=f.channel_id)
+            ORDER BY CASE WHEN tvg_id=f.channel_id THEN 0 ELSE 1 END
+            LIMIT 1
+        )"""
+
     def football(self, playlist_id: int, category: str | None = None, search: str = "",
                  limit: int = 70, offset: int = 0) -> list[dict]:
+        # Keep at most the last hour after a broadcast ends; refresh this filter
+        # on every query rather than waiting for a new XMLTV import.
+        threshold = (datetime.now().astimezone() - timedelta(hours=1)).isoformat()
+        where = ["f.playlist_id=?", "datetime(f.end)>datetime(?)"]
+        args: list = [playlist_id,threshold]
+        if category:
+            where.append("f.competition=?")
+            args.append(category)
+        if search:
+            where.append("f.title LIKE ?")
+            args.append(f"%{search}%")
+        sql = f"""SELECT f.*, i.title AS channel_title, i.url, i.key, i.logo, 'football' AS kind
+            FROM football_events f {self._linked_football_source()}
+            WHERE {' AND '.join(where)}
+            ORDER BY datetime(f.start) ASC LIMIT ? OFFSET ?"""
         with self.connect() as db:
-            where = ["f.playlist_id=?"]
-            args: list = [playlist_id]
-            if category:
-                where.append("f.competition=?")
-                args.append(category)
-            if search:
-                where.append("f.title LIKE ?")
-                args.append(f"%{search}%")
-            sql = f"""SELECT f.*, i.title AS channel_title, i.url, i.key, i.logo, 'football' AS kind
-                FROM football_events f LEFT JOIN items i ON i.rowid=(
-                  SELECT rowid FROM items WHERE playlist_id=f.playlist_id
-                    AND kind='live' AND f.channel_id<>'' AND (tvg_id=f.channel_id OR title=f.channel_id)
-                    ORDER BY CASE WHEN tvg_id<>'' THEN 0 ELSE 1 END LIMIT 1
-                )
-                WHERE {' AND '.join(where)} ORDER BY f.start ASC LIMIT ? OFFSET ?"""
             return [dict(r) for r in db.execute(sql,(*args,limit,offset))]
 
     def football_categories(self, playlist_id: int) -> list[dict]:
+        threshold = (datetime.now().astimezone() - timedelta(hours=1)).isoformat()
+        sql = f"""SELECT f.competition AS title,COUNT(*) AS total
+            FROM football_events f {self._linked_football_source()}
+            WHERE f.playlist_id=? AND datetime(f.end)>datetime(?)
+            GROUP BY f.competition ORDER BY f.competition"""
         with self.connect() as db:
-            return [dict(r) for r in db.execute(
-                "SELECT competition AS title,COUNT(*) AS total FROM football_events WHERE playlist_id=? GROUP BY competition ORDER BY title",
-                (playlist_id,))]
+            return [dict(r) for r in db.execute(sql,(playlist_id,threshold))]
 
 
     def sport_channels(self, playlist_id: int, search: str = "", limit: int = 160) -> list[dict]:
