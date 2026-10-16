@@ -33,6 +33,8 @@ def test_verified_download_does_not_trigger_cancel_during_dialog_dismissal(
     from PySide6.QtCore import QObject
     from PySide6.QtWidgets import QProgressDialog
     import aurora_desktop.update_ui as ui
+    # Test the existing Windows in-place upgrade regardless of CI host OS.
+    monkeypatch.setattr(ui.sys, "platform", "win32")
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
@@ -84,5 +86,44 @@ def test_download_progress_shows_real_megabytes_before_hash_validation(tmp_path,
         assert "30.0 / 40.0 MB" in dialog.labelText()
         controller._progress(40*1048576,40*1048576)
         assert dialog.value()==99
+    finally:
+        window.close()
+
+
+
+def test_debian_update_launches_verified_local_package_without_github_page(tmp_path,monkeypatch):
+    from pathlib import Path
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QProgressDialog
+    import aurora_desktop.update_ui as ui
+
+    monkeypatch.setenv("XDG_CACHE_HOME",str(tmp_path))
+    monkeypatch.setattr(ui.sys,"platform","linux")
+    app=QApplication.instance() or QApplication([])
+    window=MainWindow()
+    try:
+        controller=UpdateController(window)
+        window.update_controller=controller
+        filename=tmp_path/"aurora-iptv_0.6.0-beta9_amd64.deb"
+        filename.write_bytes(b"!<arch>\n" + b"test")
+        dlg=QProgressDialog("Baixando","Cancelar",0,100,window)
+        dlg.setAutoClose(False)
+        dlg.setAutoReset(False)
+        dlg.canceled.connect(controller._cancel)
+        controller.download_dialog=dlg
+        controller.downloader=QObject()
+        controller._target_version="0.6.0-beta.9"
+        controller._downloaded(filename)
+        calls=[]
+        close=[]
+        monkeypatch.setattr(ui,"linux_install_supported",lambda:True)
+        monkeypatch.setattr(ui,"launch_linux_update",
+                            lambda deb, **kwargs: calls.append((deb,kwargs)))
+        monkeypatch.setattr(ui.QTimer,"singleShot",lambda ms,fn:close.append(fn))
+        controller._download_finished()
+        assert not controller._cancelled
+        assert calls==[(filename,{"target_version":"0.6.0-beta.9"})]
+        assert len(close)==1
+        assert controller.downloader is None
     finally:
         window.close()
