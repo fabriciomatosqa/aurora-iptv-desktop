@@ -276,13 +276,19 @@ class MainWindow(legacy.MainWindow):
         footer.setWordWrap(True)
         side.addWidget(footer)
         base.addWidget(sidebar)
+        self.sidebar = sidebar
 
         shell = QWidget()
         shell.setObjectName("contentShell")
         outer = QVBoxLayout(shell)
         outer.setContentsMargins(16,15,16,15)
         outer.setSpacing(14)
-        upper = QHBoxLayout()
+        self.outer_layout = outer
+        self.header_widget = QWidget(shell)
+        self.header_widget.setObjectName("mainHeader")
+        upper = QHBoxLayout(self.header_widget)
+        upper.setContentsMargins(0,0,0,0)
+        upper.setSpacing(12)
         upper.addWidget(AuroraBanner(),1)
         tool = QVBoxLayout()
         tool.addWidget(QLabel("LISTA ATIVA"))
@@ -292,15 +298,17 @@ class MainWindow(legacy.MainWindow):
         tool.addWidget(self.playlists)
         tool.addStretch()
         upper.addLayout(tool)
-        outer.addLayout(upper)
+        outer.addWidget(self.header_widget)
 
         panels = QSplitter(Qt.Orientation.Horizontal)
+        self.panels = panels
         panels.setChildrenCollapsible(False)
         outer.addWidget(panels,1)
 
         categories_panel = QFrame()
         categories_panel.setObjectName("panel")
         categories_panel.setMinimumWidth(230)
+        self.categories_panel = categories_panel
         group_layout = QVBoxLayout(categories_panel)
         group_layout.setContentsMargins(16,17,16,14)
         group_layout.setSpacing(9)
@@ -323,6 +331,7 @@ class MainWindow(legacy.MainWindow):
         contents_panel = QFrame()
         contents_panel.setObjectName("panel")
         contents_panel.setMinimumWidth(340)
+        self.contents_panel = contents_panel
         content_layout = QVBoxLayout(contents_panel)
         content_layout.setContentsMargins(16,17,16,14)
         content_layout.setSpacing(10)
@@ -380,6 +389,7 @@ class MainWindow(legacy.MainWindow):
         player_panel = QFrame()
         player_panel.setObjectName("panel")
         player_panel.setMinimumWidth(440)
+        self.player_panel = player_panel
         play_layout = QVBoxLayout(player_panel)
         play_layout.setContentsMargins(17,17,17,14)
         play_layout.setSpacing(10)
@@ -428,9 +438,10 @@ class MainWindow(legacy.MainWindow):
         self.favorite.setIconSize(QSize(21,21))
         self.favorite.clicked.connect(self._favorite)
         actions.addWidget(self.favorite)
-        fullscreen = QPushButton("⛶ Tela cheia")
-        fullscreen.clicked.connect(lambda:self.video.setFullScreen(not self.video.isFullScreen()))
-        actions.addWidget(fullscreen)
+        self.fullscreen_button = QPushButton("⛶ Tela cheia")
+        self.fullscreen_button.clicked.connect(self._toggle_video_fullscreen)
+        self.fullscreen_button.setToolTip("Tela cheia (F11) · sair com Esc")
+        actions.addWidget(self.fullscreen_button)
         actions.addWidget(QLabel("Volume"))
         volume = QSlider(Qt.Orientation.Horizontal)
         volume.setRange(0,100)
@@ -451,7 +462,13 @@ class MainWindow(legacy.MainWindow):
         base.addWidget(shell,1)
 
         QShortcut(QKeySequence("Space"),self.video,self._toggle_play)
-        QShortcut(QKeySequence("Escape"),self,lambda:self.video.setFullScreen(False))
+        self.exit_fullscreen_shortcut = QShortcut(QKeySequence("Escape"),self,self._leave_video_fullscreen)
+        self.exit_fullscreen_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.enter_fullscreen_shortcut = QShortcut(QKeySequence("F11"),self,self._toggle_video_fullscreen)
+        self.enter_fullscreen_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._video_fullscreen = False
+        self._fullscreen_was_maximized = False
+        self._saved_panel_sizes = None
         self.selected_category = None
         self._loading_items = False
         self._exhausted = False
@@ -467,6 +484,55 @@ class MainWindow(legacy.MainWindow):
         self.guide_thread = None
         self.setMinimumSize(1150,680)
         self.resize(1580,900)
+
+    def _toggle_video_fullscreen(self):
+        """Enlarge the existing video SURFACE without QVideoWidget.setFullScreen().
+
+        Qt's native video window may freeze on Windows and some Linux compositors
+        when QVideoWidget is independently promoted to a fullscreen window. We
+        fullscreen the MAIN window instead and never reparent/rebind the player.
+        """
+        if self._video_fullscreen:
+            self._leave_video_fullscreen()
+            return
+        self._video_fullscreen = True
+        self._fullscreen_was_maximized = self.isMaximized()
+        self._saved_panel_sizes = self.panels.sizes()
+        self.sidebar.hide()
+        self.header_widget.hide()
+        self.categories_panel.hide()
+        self.contents_panel.hide()
+        self.now.hide()
+        self.video_title.hide()
+        self.status.hide()
+        self.menuBar().hide()
+        self.outer_layout.setContentsMargins(0,0,0,0)
+        self.fullscreen_button.setText("⤢ Sair da tela cheia")
+        self.fullscreen_button.setToolTip("Voltar à janela (Esc ou F11)")
+        self.showFullScreen()
+        self.video.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _leave_video_fullscreen(self):
+        if not self._video_fullscreen:
+            return
+        self._video_fullscreen = False
+        self.showNormal()
+        if self._fullscreen_was_maximized:
+            self.showMaximized()
+        self.sidebar.show()
+        self.header_widget.show()
+        self.categories_panel.show()
+        self.contents_panel.show()
+        self.now.show()
+        self.video_title.show()
+        self.status.show()
+        self.menuBar().show()
+        self.outer_layout.setContentsMargins(16,15,16,15)
+        if self._saved_panel_sizes:
+            self.panels.setSizes(self._saved_panel_sizes)
+        self.fullscreen_button.setText("⛶ Tela cheia")
+        self.fullscreen_button.setToolTip("Tela cheia (F11) · sair com Esc")
+        self.video.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _start(self, item):
         if item.get("url"):
