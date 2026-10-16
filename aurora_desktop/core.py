@@ -16,7 +16,11 @@ import sys
 
 import requests
 
+from .android_rules import classify_content, series_identity
+
 ATTR = re.compile(r'([\w-]+)\s*=\s*"([^"]*)"')
+ATTR_ANY = re.compile(r"""([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
+
 EPISODE = re.compile(r"(?i)\bS(?:eason)?\s*0*(\d{1,3})\s*[ ._-]*E(?:pisode)?\s*0*(\d{1,4})\b")
 ALT_EPISODE = re.compile(r"(?i)\b(\d{1,2})x(\d{1,3})\b")
 MOVIE_TAG = re.compile(r"(?i)\b(filmes?|movies?|cinema|vod)\b")
@@ -35,38 +39,8 @@ def content_id(url: str) -> str:
     return sha256(url.encode('utf-8')).hexdigest()
 
 
-def kind_of(group: str, title: str, url: str) -> str:
-    """Prefer provider URL semantics, then playlist group and filename.
-
-    Unknown content is live only as a last resort. A generic genre without
-    'Filmes' is still a movie, not a TV channel.
-    """
-    group_fold = group.casefold()
-    title_fold = title.casefold()
-    path = urlsplit(url).path.casefold()
-    if EPISODE.search(title) or ALT_EPISODE.search(title):
-        return "series"
-    if "/series/" in path or SERIES_TAG.search(group):
-        return "series"
-    if "/movie/" in path or "/vod/" in path:
-        return "movie"
-    if "/live/" in path:
-        return "live"
-    if MOVIE_TAG.search(group):
-        return "movie"
-    # Some Xtream-like services use genre-only group names without "Filmes".
-    if re.search(r"(?i)\b(a[cç][aã]o|terror|horror|com[eé]dia|comedy|drama|romance|suspense|thriller|fic[cç][aã]o|animation|anima[cç][aã]o|document[aá]rio|aventura|adventure|faroeste|western|lan[cç]amentos|cinema|4k\s*filmes?)\b", group):
-        return "movie"
-    # Video files are predominantly VOD. Episodes were recognized above.
-    if re.search(r"(?i)\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v)(?:$|[?#])", path):
-        return "movie"
-    if re.search(r"(?i)\b(ao\s*vivo|canais?|tv\s*aberta|sportv|premiere|jornalismo|not[ií]cias|futebol|esportes?|24h|radio|r[aá]dio)\b", group):
-        return "live"
-    # Movie titles often include a release year while live channels typically
-    # carry a quality marker. Use this only when there is no stronger signal.
-    if re.search(r"\((?:19|20)\d{2}\)\s*$", title_fold) and not re.search(r"(?i)\b(tv|hd|fhd|uhd|4k|24h)\b", group):
-        return "movie"
-    return "live"
+def kind_of(group: str, title: str, url: str, type_hint: str = "") -> str:
+    return classify_content(title, group, url, type_hint)
 
 
 def parse_extinf(line: str) -> dict[str, str]:
@@ -76,15 +50,15 @@ def parse_extinf(line: str) -> dict[str, str]:
     A normal split(',', 1) exposes metadata as the item title; this parser
     finds the delimiter outside quotes and after the final metadata attribute.
     """
-    attrs_matches = list(ATTR.finditer(line))
-    attrs = {m.group(1).lower(): m.group(2) for m in attrs_matches}
+    attrs_matches = list(ATTR_ANY.finditer(line))
+    attrs = {m.group(1).lower(): (m.group(2) or m.group(3)) for m in attrs_matches}
     last_attr_end = max((m.end() for m in attrs_matches), default=0)
     commas = []
-    quoted = False
+    quoted = None
     for pos, char in enumerate(line):
-        if char == '"':
-            quoted = not quoted
-        elif char == "," and not quoted:
+        if char in ('"', "'") and (quoted is None or quoted == char):
+            quoted = char if quoted is None else None
+        elif char == "," and quoted is None:
             commas.append(pos)
     delim = next((p for p in commas if p >= last_attr_end), None)
     if delim is None and commas and commas[0] < last_attr_end:
@@ -102,15 +76,13 @@ def parse_extinf(line: str) -> dict[str, str]:
         "group": attrs.get("group-title", ""),
         "logo": attrs.get("tvg-logo", ""),
         "tvg_id": attrs.get("tvg-id", ""),
+        "type_hint": next((attrs[k] for k in ("media-type","tvg-type","content-type","type") if attrs.get(k)), ""),
     }
 
 
 def episode_info(title: str) -> tuple[str, int | None, int | None]:
-    match = EPISODE.search(title) or ALT_EPISODE.search(title)
-    if not match:
-        return title.strip(), None, None
-    series_name = title[:match.start()].strip(' -_.:[]')
-    return series_name or title.strip(), int(match.group(1)), int(match.group(2))
+    identity = series_identity(title)
+    return identity.title, identity.season if identity.episode > 0 else None, identity.episode or None
 
 
 @dataclass(frozen=True)
@@ -125,6 +97,7 @@ class Entry:
     season: int | None
     episode: int | None
     tvg_id: str = ''
+    type_hint: str = ''
 
 
 def parse_m3u(lines: Iterable[str]) -> Iterator[Entry]:
@@ -151,9 +124,9 @@ def parse_m3u(lines: Iterable[str]) -> Iterator[Entry]:
             info = None
             continue
         name = info['title']
-        typ = kind_of(info['group'], name, url)
+        typ = kind_of(info['group'], name, url, info.get('type_hint', ''))
         series, season, episode = episode_info(name) if typ == 'series' else ('', None, None)
-        yield Entry(content_id(url), name, url, info['group'], typ, info['logo'], series, season, episode, info['tvg_id'])
+        yield Entry(content_id(url), name, url, info['group'], typ, info['logo'], series, season, episode, info['tvg_id'], info.get('type_hint', ''))
         info = None
 
 
