@@ -374,6 +374,7 @@ class MainWindow(legacy.MainWindow):
         play_layout.addWidget(self.video_title)
         self.video = QVideoWidget()
         self.video.setMinimumHeight(200)
+        self.video.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.video.setStyleSheet("background:#030b13;")
         self.player_splash = PlayerSplash()
         self.video_stage = QStackedWidget()
@@ -427,7 +428,7 @@ class MainWindow(legacy.MainWindow):
         panels.setSizes([260,455,725])
         base.addWidget(shell,1)
 
-        QShortcut(QKeySequence("Space"),self,self._toggle_play)
+        QShortcut(QKeySequence("Space"),self.video,self._toggle_play)
         QShortcut(QKeySequence("Escape"),self,lambda:self.video.setFullScreen(False))
         self.selected_category = None
         self._loading_items = False
@@ -449,6 +450,7 @@ class MainWindow(legacy.MainWindow):
         super()._start(item)
         if item.get("url"):
             self.video_stage.setCurrentWidget(self.video)
+            self.video.setFocus()
 
     def _player_error(self, error, error_string):
         super()._player_error(error,error_string)
