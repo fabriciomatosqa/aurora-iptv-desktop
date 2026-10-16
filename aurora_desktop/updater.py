@@ -261,7 +261,8 @@ def take_update_status() -> dict | None:
 def launch_windows_silent(installer: Path, popen=None,
                           installed_exe: Path | None = None,
                           helper_source: Path | None = None,
-                          parent_pid: int | None = None) -> Path:
+                          parent_pid: int | None = None,
+                          target_version: str | None = None) -> Path:
     """Stage a detached updater that waits for THIS process before installing.
 
     The helper must run outside the installed application tree. Otherwise Inno
@@ -297,7 +298,7 @@ def launch_windows_silent(installer: Path, popen=None,
         "-InstalledExe", str(installed_exe),
         "-StatusFile", str(status),
         "-InstallLog", str(log),
-        "-ExpectedVersion", __version__,
+        "-ExpectedVersion", target_version or __version__,
     ]
     if popen is None:
         popen = subprocess.Popen
