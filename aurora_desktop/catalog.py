@@ -16,6 +16,8 @@ from xml.etree.ElementTree import iterparse
 import requests
 
 from .core import ATTR, Library, playlist_lines, kind_of, episode_info, parse_extinf
+from .android_rules import normalized, movie_category
+from .provider import get_provider_category_kinds
 
 GENRES = (
     ("Ação", r"\ba[cç][aã]o\b|\baction\b"),
@@ -92,8 +94,14 @@ def category_of(kind: str, title: str, group_name: str) -> str:
                     return provider
             stripped = re.sub(r"(?i)^\s*(s[eé]ries?|series|shows?)\s*(?:[|:/-]\s*)?", "", group).strip()
             return stripped or "Sem plataforma identificada"
-        stripped = re.sub(r"(?i)^\s*(filmes?|movies?|vod|cinema)\s*(?:[|:/-]\s*)?", "", group).strip()
-        return stripped or "Outros filmes"
+        android_category = movie_category(group)
+        labels = {
+            "__aurora_recent__": "Recentes",
+            "__aurora_releases_2026__": "Lançamentos",
+            "__aurora_4k__": "4K / UHD",
+            "__aurora_adult__": "Adultos",
+        }
+        return labels.get(android_category, android_category or "Outros filmes")
     return "Outros"
 
 
@@ -198,6 +206,8 @@ class LibraryV2(Library):
                 db.execute("ALTER TABLE items ADD COLUMN category TEXT NOT NULL DEFAULT ''")
             if "tvg_id" not in cols:
                 db.execute("ALTER TABLE items ADD COLUMN tvg_id TEXT NOT NULL DEFAULT ''")
+            if "type_hint" not in cols:
+                db.execute("ALTER TABLE items ADD COLUMN type_hint TEXT NOT NULL DEFAULT ''")
             pcols = {r["name"] for r in db.execute("PRAGMA table_info(playlists)")}
             if "epg_url" not in pcols:
                 db.execute("ALTER TABLE playlists ADD COLUMN epg_url TEXT NOT NULL DEFAULT ''")
@@ -215,15 +225,30 @@ class LibraryV2(Library):
                     playlist_id INTEGER PRIMARY KEY REFERENCES playlists(id) ON DELETE CASCADE,
                     version INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS provider_category_kinds (
+                    playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+                    normalized_name TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    PRIMARY KEY (playlist_id,normalized_name)
+                );
             """)
 
     def import_playlist(self, playlist_id: int, source: str | None = None) -> int:
         count = super().import_playlist(playlist_id, source)
-        self.ensure_categories(playlist_id, force=True)
         with self.connect() as db:
             r = db.execute("SELECT source,epg_url FROM playlists WHERE id=?", (playlist_id,)).fetchone()
+        location = source or r["source"] if r else ""
+        # Xtream providers can reliably tell us which groups are TV, VOD or series.
+        # Metadata is optional and cannot make an otherwise playable M3U fail.
+        kinds = get_provider_category_kinds(location)
+        if kinds:
+            with self.connect() as db:
+                db.execute("DELETE FROM provider_category_kinds WHERE playlist_id=?", (playlist_id,))
+                db.executemany("INSERT INTO provider_category_kinds VALUES (?,?,?)",
+                               [(playlist_id,name,kind) for name,kind in kinds.items()])
+        self.ensure_categories(playlist_id, force=True)
         if r and not r["epg_url"]:
-            epg = epg_from_header(source or r["source"])
+            epg = epg_from_header(location)
             if epg:
                 self.set_epg_url(playlist_id, epg)
         return count
@@ -232,11 +257,13 @@ class LibraryV2(Library):
         """Reclassify a 0.1/0.2 catalog once, preserving URL-keyed favorites and progress."""
         with self.connect() as db:
             row = db.execute("SELECT version FROM classification_version WHERE playlist_id=?", (playlist_id,)).fetchone()
-            if row and row["version"] >= 3 and not force:
+            if row and row["version"] >= 4 and not force:
                 return
+            provider_kinds = {r["normalized_name"]:r["kind"] for r in db.execute(
+                "SELECT normalized_name,kind FROM provider_category_kinds WHERE playlist_id=?", (playlist_id,))}
             cursor = 0
             while True:
-                batch = db.execute("""SELECT rowid,key,title,url,group_name,kind,logo
+                batch = db.execute("""SELECT rowid,key,title,url,group_name,kind,logo,type_hint
                     FROM items WHERE playlist_id=? AND rowid>? ORDER BY rowid LIMIT 1200""",
                     (playlist_id, cursor)).fetchall()
                 if not batch:
@@ -244,15 +271,15 @@ class LibraryV2(Library):
                 updated = []
                 for item in batch:
                     title, group, logo = repair_legacy_title(item["title"], item["group_name"], item["logo"])
-                    kind = kind_of(group, title, item["url"])
+                    kind = provider_kinds.get(normalized(group)) or kind_of(group, title, item["url"], item["type_hint"])
                     series, season, episode = episode_info(title) if kind == "series" else ("", None, None)
                     category = category_of(kind, title, group)
                     updated.append((title,group,logo,kind,category,series,season,episode,item["rowid"]))
                 db.executemany("""UPDATE items SET title=?,group_name=?,logo=?,kind=?,
                     category=?,series_name=?,season=?,episode=? WHERE rowid=?""",updated)
                 cursor = batch[-1]["rowid"]
-            db.execute("""INSERT INTO classification_version VALUES (?,3)
-                ON CONFLICT(playlist_id) DO UPDATE SET version=3""", (playlist_id,))
+            db.execute("""INSERT INTO classification_version VALUES (?,4)
+                ON CONFLICT(playlist_id) DO UPDATE SET version=4""", (playlist_id,))
 
     def categories(self, playlist_id: int, kind: str) -> list[dict]:
         with self.connect() as db:
