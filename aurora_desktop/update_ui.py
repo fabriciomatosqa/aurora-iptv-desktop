@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 from . import __version__
 from .updater import (
     RELEASES_PAGE, Release, UpdateError, discover_release, download_verified,
-    install_supported, launch_windows_silent
+    install_supported, launch_windows_silent, take_update_status
 )
 
 
@@ -69,6 +69,7 @@ class UpdateController(QObject):
         self._manual = False
         self._installed_file = None
         self._cancelled = False
+        self._target_version = None
 
     def attach_menu(self, menu_bar):
         menu = menu_bar.addMenu("Atualizações")
@@ -87,9 +88,6 @@ class UpdateController(QObject):
             action.triggered.connect(lambda checked=False,c=channel:self.set_channel(c))
             channels.addAction(action)
             choices.addAction(action)
-        menu.addSeparator()
-        menu.addAction("Histórico de versões (GitHub Releases)",
-                       lambda: QDesktopServices.openUrl(QUrl(RELEASES_PAGE)))
 
     def set_channel(self, channel):
         self.settings.setValue("updates/channel",channel)
@@ -176,6 +174,7 @@ class UpdateController(QObject):
             return
         self._installed_file=None
         self._cancelled=False
+        self._target_version=release.version
         dialog=QProgressDialog("Baixando atualização verificada...","Cancelar",0,100,self.window)
         dialog.setWindowTitle(f"Atualizando para {release.version}")
         dialog.setMinimumDuration(0)
@@ -232,13 +231,27 @@ class UpdateController(QObject):
                     "Conclua a importação ou a atualização do guia e tente novamente.")
                 return
         try:
-            launch_windows_silent(file)
+            launch_windows_silent(file, target_version=self._target_version)
         except UpdateError as exc:
             QMessageBox.warning(self.window,"AURORA IPTV · Instalação",str(exc))
             return
-        self.window.status.setText("Atualização iniciada. O aplicativo será fechado.")
+        self.window.status.setText("Download conferido. Fechando o AURORA para instalar e reabrir automaticamente.")
         # Inno Setup per-user installer will replace the existing installation.
         QTimer.singleShot(0,self.window.close)
+
+    def show_previous_result(self):
+        result = take_update_status()
+        if not result:
+            return
+        if result["status"] == "ok" and result["version"] == __version__:
+            self.window.status.setText(f"AURORA atualizado com sucesso para v{__version__}.")
+        elif result["status"] == "failed":
+            QMessageBox.warning(self.window, "Falha na atualização",
+                "Não foi possível concluir a atualização silenciosa. "
+                f"Código: {result['exit_code']}. A instalação anterior foi preservada. "
+                "Confira o arquivo innosetup-update.log na pasta de atualizações.")
+        else:
+            self.window.status.setText("Atualização não confirmada. Confira a versão instalada.")
 
     def shutdown(self):
         if self.downloader is not None:
