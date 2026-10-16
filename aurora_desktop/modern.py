@@ -244,7 +244,8 @@ class MainWindow(legacy.MainWindow):
         brand = QLabel("AURORA IPTV")
         brand.setObjectName("brand")
         side.addWidget(brand)
-        side.addWidget(QLabel("DESKTOP  ·  v0.5.0"))
+        from . import __version__
+        side.addWidget(QLabel(f"DESKTOP  ·  v{__version__}"))
         side.addSpacing(18)
         self.nav = {}
         for mode,title in [
@@ -881,6 +882,10 @@ def main():
     if icon.exists():
         app.setWindowIcon(QIcon(str(icon)))
     window = MainWindow()
+    from . import __version__
+    from .update_ui import UpdateController
+    window.setWindowTitle(f"AURORA IPTV | Desktop v{__version__}")
+    window.update_controller = UpdateController(window)
     app.styleHints().colorSchemeChanged.connect(lambda _:window._theme_apply())
     appearance = window.menuBar().addMenu("Aparência")
     for label,value in [("Escuro","dark"),("Claro","light"),("Conforme sistema","system")]:
@@ -890,5 +895,7 @@ def main():
     playlist_menu.addAction("Adicionar M3U",window._add_url)
     playlist_menu.addAction("Atualizar lista",window._import_active)
     playlist_menu.addAction("Configurações",lambda:window.navigate("settings"))
+    window.update_controller.attach_menu(window.menuBar())
     window.show()
+    QTimer.singleShot(6000, lambda: window.update_controller.check(manual=False))
     return app.exec()
