@@ -10,8 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 import hashlib
+import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 from typing import Callable
@@ -218,15 +221,93 @@ def install_supported() -> bool:
     return sys.platform=="win32" and bool(getattr(sys,"frozen",False))
 
 
-def launch_windows_silent(installer: Path, popen=None) -> None:
+def _updater_script() -> Path:
+    """Resolve the bundled helper inside the PyInstaller data directory."""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    return base / "aurora_desktop" / "apply_update.ps1"
+
+
+def update_status_path() -> Path:
+    return update_directory() / "update-status.json"
+
+
+def take_update_status() -> dict | None:
+    """Show an installation outcome only once after the updated app reopens."""
+    path = update_status_path()
+    try:
+        info = json.loads(path.read_text(encoding="utf-8-sig"))
+        if not isinstance(info, dict):
+            return None
+        if info.get("status") not in ("ok", "failed"):
+            return None
+        return {
+            "status": info["status"],
+            "version": str(info.get("version", ""))[:40],
+            "exit_code": int(info.get("exit_code", 0)),
+        }
+    except (OSError, ValueError, TypeError):
+        return None
+    finally:
+        # Never delete "waiting"/"installing" status from a helper still running.
+        try:
+            if path.exists():
+                state = json.loads(path.read_text(encoding="utf-8-sig")).get("status")
+                if state in ("ok", "failed"):
+                    path.unlink(missing_ok=True)
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
+
+
+def launch_windows_silent(installer: Path, popen=None,
+                          installed_exe: Path | None = None,
+                          helper_source: Path | None = None,
+                          parent_pid: int | None = None) -> Path:
+    """Stage a detached updater that waits for THIS process before installing.
+
+    The helper must run outside the installed application tree. Otherwise Inno
+    Setup cannot replace the running exe. After completion it restarts the
+    installed exe, not the downloaded installer. Returns the status file path.
+    """
     if not install_supported():
         raise UpdateError("Instalação automática disponível somente na edição Windows instalada.")
-    if installer.name!="AURORA-IPTV-Desktop-Setup.exe" or not installer.is_file():
+    installer = installer.resolve()
+    if installer.name != "AURORA-IPTV-Desktop-Setup.exe" or not installer.is_file():
         raise UpdateError("O instalador verificado não foi encontrado.")
-    if popen is None:
-        import subprocess
-        popen=subprocess.Popen
+    installed_exe = (installed_exe or Path(sys.executable)).resolve()
+    if installed_exe.name.lower() != "aurora-iptv.exe" or not installed_exe.is_file():
+        raise UpdateError("O executável da instalação atual não foi identificado.")
+    source = helper_source or _updater_script()
+    if not source.is_file():
+        raise UpdateError("O auxiliar de atualização não foi incluído no instalador.")
+    folder = update_directory()
+    helper = folder / "aurora-apply-update.ps1"
     try:
-        popen([str(installer),*WINDOWS_SILENT_ARGS],cwd=str(installer.parent),close_fds=True)
+        shutil.copyfile(source, helper)
     except OSError as exc:
-        raise UpdateError("Não foi possível iniciar a atualização. A versão atual foi mantida.") from exc
+        raise UpdateError("Não foi possível preparar a atualização silenciosa.") from exc
+    status = folder / "update-status.json"
+    log = folder / "innosetup-update.log"
+    powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    command = [
+        str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
+        "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+        "-File", str(helper),
+        "-ParentProcessId", str(parent_pid if parent_pid is not None else os.getpid()),
+        "-Installer", str(installer),
+        "-InstalledExe", str(installed_exe),
+        "-StatusFile", str(status),
+        "-InstallLog", str(log),
+        "-ExpectedVersion", __version__,
+    ]
+    if popen is None:
+        popen = subprocess.Popen
+    try:
+        # The helper survives when Qt exits and waits before touching any files.
+        popen(command, cwd=str(folder),
+              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+              stderr=subprocess.DEVNULL, close_fds=True,
+              creationflags=(getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                             | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)))
+    except OSError as exc:
+        raise UpdateError("Não foi possível iniciar o auxiliar. A versão atual foi mantida.") from exc
+    return status
