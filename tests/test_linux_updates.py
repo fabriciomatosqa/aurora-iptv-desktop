@@ -95,6 +95,7 @@ def test_linux_update_launcher_detaches_and_never_installs_in_source(tmp_path,mo
     helper=tmp_path/"apply_update_linux.sh"
     helper.write_text("#!/bin/sh\n",encoding="utf8")
     monkeypatch.setenv("XDG_CACHE_HOME",str(tmp_path/"cache"))
+    monkeypatch.setattr(updater.sys,"platform","linux")
     monkeypatch.setattr(updater,"linux_install_supported",lambda:True)
     monkeypatch.setattr(updater.shutil,"which",lambda name:"/usr/bin/pkexec" if name=="pkexec" else None)
     spawned=[]
