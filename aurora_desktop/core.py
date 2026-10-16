@@ -173,7 +173,7 @@ class Library:
                     key TEXT NOT NULL, title TEXT NOT NULL, url TEXT NOT NULL,
                     group_name TEXT NOT NULL, kind TEXT NOT NULL, logo TEXT NOT NULL,
                     series_name TEXT NOT NULL, season INTEGER, episode INTEGER,
-                    tvg_id TEXT NOT NULL DEFAULT '', PRIMARY KEY(playlist_id,key)
+                    tvg_id TEXT NOT NULL DEFAULT '', type_hint TEXT NOT NULL DEFAULT '', PRIMARY KEY(playlist_id,key)
                 );
                 CREATE INDEX IF NOT EXISTS idx_items_kind ON items(playlist_id,kind,title COLLATE NOCASE);
                 CREATE INDEX IF NOT EXISTS idx_items_series ON items(playlist_id,series_name,season,episode);
@@ -234,23 +234,23 @@ class Library:
                 playlist_id INTEGER NOT NULL, key TEXT NOT NULL, title TEXT NOT NULL,
                 url TEXT NOT NULL, group_name TEXT NOT NULL, kind TEXT NOT NULL,
                 logo TEXT NOT NULL, series_name TEXT NOT NULL, season INTEGER, episode INTEGER,
-                tvg_id TEXT NOT NULL DEFAULT '', PRIMARY KEY(playlist_id,key)
+                tvg_id TEXT NOT NULL DEFAULT '', type_hint TEXT NOT NULL DEFAULT '', PRIMARY KEY(playlist_id,key)
             )''')
             pending = []
             for entry in parse_m3u(playlist_lines(location)):
                 pending.append((playlist_id, entry.key, entry.title, entry.url, entry.group_name,
-                                entry.kind, entry.logo, entry.series_name, entry.season, entry.episode, entry.tvg_id))
+                                entry.kind, entry.logo, entry.series_name, entry.season, entry.episode, entry.tvg_id, entry.type_hint))
                 total += 1
                 if len(pending) >= 1000:
-                    db.executemany('INSERT OR REPLACE INTO staging VALUES (?,?,?,?,?,?,?,?,?,?,?)', pending)
+                    db.executemany('INSERT OR REPLACE INTO staging VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', pending)
                     pending.clear()
             if pending:
-                db.executemany('INSERT OR REPLACE INTO staging VALUES (?,?,?,?,?,?,?,?,?,?,?)', pending)
+                db.executemany('INSERT OR REPLACE INTO staging VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', pending)
             if total == 0:
                 raise ValueError('A lista não contém entradas M3U válidas. Seu catálogo anterior foi preservado.')
             db.execute('DELETE FROM items WHERE playlist_id=?', (playlist_id,))
-            db.execute('''INSERT INTO items (playlist_id,key,title,url,group_name,kind,logo,series_name,season,episode,tvg_id)
-                          SELECT playlist_id,key,title,url,group_name,kind,logo,series_name,season,episode,tvg_id FROM staging''')
+            db.execute('''INSERT INTO items (playlist_id,key,title,url,group_name,kind,logo,series_name,season,episode,tvg_id,type_hint)
+                          SELECT playlist_id,key,title,url,group_name,kind,logo,series_name,season,episode,tvg_id,type_hint FROM staging''')
             db.execute('UPDATE playlists SET updated_at=CURRENT_TIMESTAMP WHERE id=?', (playlist_id,))
             db.commit()
             return total
