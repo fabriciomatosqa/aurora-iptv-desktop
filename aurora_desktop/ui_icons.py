@@ -39,7 +39,7 @@ def icon_for(name: str, size: int = 24, light: bool = False) -> QIcon:
     def outline(path: QPainterPath, color=cyan, width=1.9, fill=None):
         p.setPen(QPen(color, width, Qt.PenStyle.SolidLine,
                       Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-        p.setBrush(fill if fill is not None else Qt.BrushStyle.NoBrush)
+        p.setBrush(QBrush(fill) if fill is not None else Qt.BrushStyle.NoBrush)
         p.drawPath(path)
 
     def rounded(x, y, w, h, r, color, border=None, line_width=1.8):
