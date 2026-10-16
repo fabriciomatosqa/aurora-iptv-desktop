@@ -643,7 +643,7 @@ class MainWindow(legacy.MainWindow):
             else:
                 self.status.setText("O EPG não identificou um canal desta lista para o jogo selecionado.")
             return
-        if row.get("kind") == "series" and self.mode != "episodes":
+        if row.get("kind") == "series" and self.mode not in ("episodes", "home"):
             self.series_name = row.get("series_name") or row["title"]
             self.mode = "episodes"
             self._refresh()
