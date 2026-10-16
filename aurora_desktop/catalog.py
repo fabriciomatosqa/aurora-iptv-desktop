@@ -122,6 +122,19 @@ def xmltv_time(value: str) -> datetime | None:
         return None
 
 
+def guess_xtream_epg(source: str) -> str:
+    """Suggest the standard Xtream XMLTV endpoint without any network call."""
+    parsed = urlparse(source)
+    args = parse_qs(parsed.query)
+    if (parsed.scheme in ("http", "https")
+            and parsed.path.lower().endswith("/get.php")
+            and args.get("username") and args.get("password")):
+        query = urlencode({"username":args["username"][0],"password":args["password"][0]})
+        base_path = parsed.path[:-len("/get.php")]
+        return urlunparse((parsed.scheme,parsed.netloc,base_path+"/xmltv.php","",query,""))
+    return ""
+
+
 def epg_from_header(source: str) -> str:
     """Read just the beginning of the M3U for the URL advertised by its owner."""
     try:
@@ -138,12 +151,7 @@ def epg_from_header(source: str) -> str:
     except (OSError, requests.RequestException, ValueError):
         pass
     # Xtream-compatible providers can expose XMLTV separately from get.php.
-    parsed = urlparse(source)
-    args = parse_qs(parsed.query)
-    if parsed.scheme in ("http", "https") and parsed.path.lower().endswith("/get.php") and args.get("username") and args.get("password"):
-        query = urlencode({"username": args["username"][0], "password": args["password"][0]})
-        return urlunparse((parsed.scheme, parsed.netloc, "/xmltv.php", "", query, ""))
-    return ""
+    return guess_xtream_epg(source)
 
 
 def _read_xmltv(source: str):
