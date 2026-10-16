@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import app as legacy
-from .catalog import LibraryV2
+from .catalog import LibraryV2, guess_xtream_epg
 
 # The original Qt player keeps the same settings, DB path, resuming and playlist management.
 legacy.Library = LibraryV2
@@ -671,7 +671,13 @@ class MainWindow(legacy.MainWindow):
         if not pid or pid in self._auto_guide_attempted:
             return
         self._auto_guide_attempted.add(pid)
-        if self.library.get_epg_url(pid) and not self.library.football_categories(pid):
+        epg = self.library.get_epg_url(pid)
+        if not epg:
+            source = next((p["source"] for p in self.library.playlists() if p["id"] == pid), "")
+            epg = guess_xtream_epg(source)
+            if epg:
+                self.library.set_epg_url(pid, epg)
+        if epg and not self.library.football_categories(pid):
             QTimer.singleShot(50, self._update_guide)
 
     def _configure_guide(self):
