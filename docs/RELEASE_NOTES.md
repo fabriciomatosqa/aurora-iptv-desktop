@@ -1,11 +1,17 @@
-# AURORA IPTV Desktop 0.6.0 beta 4
+# AURORA IPTV Desktop 0.6.0 beta 5
 
-Beta de teste do atualizador silencioso corrigido na beta 3.
+Atualização importante do instalador automático Windows.
 
-- Quem instalou 0.6.0-beta.3 pode abrir Atualizacoes > Verificar atualizacoes agora e autorizar a instalacao online desta beta 4.
-- O novo fluxo baixa o instalador verificado SHA-256, encerra completamente o aplicativo, executa Inno Setup silenciosamente sem telas de "Avancar", e reabre o AURORA automaticamente.
-- O menu Atualizacoes nao possui mais a opcao Historico de versoes.
-- A barra de titulo identifica corretamente a versao 0.6.0-beta.4 apos a atualizacao.
-- O Windows grava um resultado da instalacao para mostrar confirmacao ou erro quando o aplicativo volta a abrir.
+## Falha encontrada e corrigida
+O diálogo QProgressDialog de download era fechado com close(), que pode disparar o evento canceled(). Como o código interpretava isso como cancelamento do usuário, descartava o instalador já verificado e deixava o AURORA aberto na versão anterior.
 
-Instalar a beta 3 manualmente uma unica vez e depois atualizar a beta 4 dentro do programa permite validar o fluxo novo. O assistente de instalacao Windows nao pode evitar avisos de seguranca do proprio sistema operacional.
+## Novo comportamento
+- Ao autorizar, baixa o EXE inteiro do GitHub Releases, mostra MB recebidos e valida bytes + SHA-256.
+- A barra fica em 99% até a integridade ser confirmada, só então mostra 100%.
+- Ao finalizar o download, desativa o botão Cancelar, oculta o diálogo sem emitir canceled e aciona o auxiliar externo.
+- O auxiliar espera o aplicativo encerrar, executa Inno Setup /VERYSILENT e reabre o AURORA.
+- O arquivo update-debug.log na pasta LOCALAPPDATA/AURORA IPTV/updates informa cada fase e a duração real de download, sem URLs privadas.
+- Erros de download e integridade são informados explicitamente; sem iniciar instalação de arquivo inválido.
+- O histórico não aparece no menu, mas Releases antigos continuam preservados.
+
+Esta beta serve de base de teste. Instale a beta 5 manualmente apenas uma vez; depois teste beta 5 para beta 6 dentro do aplicativo. Os testes automatizados não dispensam confirmação com seu Windows.

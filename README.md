@@ -1,4 +1,4 @@
-# AURORA IPTV — Desktop 0.6.0-beta.4
+# AURORA IPTV — Desktop 0.6.0-beta.5
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
 
@@ -6,7 +6,7 @@ Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Reposit�
 
 **Baixe as versões oficiais em [GitHub Releases](https://github.com/fabriciomatosqa/aurora-iptv-desktop/releases).**
 
-Para testar o fluxo corrigido: instale uma unica vez a **[0.6.0-beta.3](https://github.com/fabriciomatosqa/aurora-iptv-desktop/releases/tag/v0.6.0-beta.3)** manualmente. A beta 2 ainda não tem o novo auxiliar. Em seguida, dentro do AURORA, atualize para a **0.6.0-beta.4**. As versões antigas continuam disponíveis no GitHub Releases, mas o menu do programa não mostra mais o histórico.
+Para testar o atualizador após corrigir um cancelamento indevido ao final do download: instale a beta.5 por cima da beta atual. Quando a beta.6 estiver disponível, autorize a atualização pelo menu. O aplicativo deverá baixar e verificar o EXE completo, fechar, instalar silenciosamente e abrir novamente. O progresso agora mostra os MB transferidos, e o registro local fica em `%LOCALAPPDATA%\\AURORA IPTV\\updates\\update-debug.log`.
 No Windows:
 1. Abra Atualizações > Verificar atualizações agora. O sistema também verifica automaticamente, em intervalos de 24 h.
 2. Confira a versão instalada e a mais recente. Clique em Atualizar agora.
