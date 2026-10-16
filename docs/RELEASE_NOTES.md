@@ -1,6 +1,6 @@
-# AURORA IPTV Desktop 0.6.0 beta 1
+# AURORA IPTV Desktop 0.6.0 beta 2
 
-Esta versão inicia o sistema de **atualização pelo GitHub Releases**:
+Esta segunda beta permite testar a atualização da beta 1 sem o assistente de instalação e mantém o sistema de **atualização pelo GitHub Releases**:
 
 - O aplicativo apresenta a versão instalada na janela e no menu Atualizações.
 - Verifica novas versões automaticamente no lançamento (com intervalo de 24 horas) e permite consulta manual.

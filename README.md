@@ -1,6 +1,24 @@
-# AURORA IPTV — Desktop 0.5.0 beta
+# AURORA IPTV — Desktop 0.6.0-beta.2
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
+
+## Atualizações online e controle de versões
+
+**Baixe as versões oficiais em [GitHub Releases](https://github.com/fabriciomatosqa/aurora-iptv-desktop/releases).**
+
+A edição 0.6.0-beta.1 é a primeira com atualização integrada. Quem usa 0.5.0 ou anterior instala 0.6.0-beta.1 manualmente uma vez. Depois pode testar a atualização silenciosa para 0.6.0-beta.2 dentro do aplicativo.
+
+No Windows:
+1. Abra Atualizações > Verificar atualizações agora. O sistema também verifica automaticamente, em intervalos de 24 h.
+2. Confira a versão instalada e a mais recente. Clique em Atualizar agora.
+3. O AURORA baixa o instalador oficial, valida o SHA-256, executa Inno Setup com /VERYSILENT e fecha o aplicativo, sem as telas de Avançar.
+4. Abra o aplicativo novamente para conferir a nova versão na barra de título e no menu Atualizações.
+
+A atualização substitui o aplicativo no mesmo local, sem desinstalar manualmente; playlists e favoritos permanecem na pasta de dados do usuário. O processo nunca instala algo sem o clique de confirmação. Alertas de segurança do próprio Windows (como SmartScreen) não podem ser evitados pelo aplicativo.
+
+O menu permite escolher canal Estável ou Beta e estável. As versões publicadas atualmente são betas; nenhuma versão antiga foi declarada estável sem validação. Releases estáveis exigem aprovação explícita. As versões anteriores permanecem disponíveis no histórico, com arquivos e hashes.
+
+No Linux, a detecção funciona, mas a instalação DEB pode exigir permissões de administrador. Por isso, o aplicativo abre o Release oficial e não tenta atualizar o pacote do sistema silenciosamente.
 
 ## Versão 0.5.0 — estabilidade e correções gerais
 
