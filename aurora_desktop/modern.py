@@ -469,6 +469,7 @@ class MainWindow(legacy.MainWindow):
         self._video_fullscreen = False
         self._fullscreen_was_maximized = False
         self._saved_panel_sizes = None
+        self._saved_minimum_size = None
         self.selected_category = None
         self._loading_items = False
         self._exhausted = False
@@ -498,6 +499,8 @@ class MainWindow(legacy.MainWindow):
         self._video_fullscreen = True
         self._fullscreen_was_maximized = self.isMaximized()
         self._saved_panel_sizes = self.panels.sizes()
+        self._saved_minimum_size = self.minimumSize()
+        self.setMinimumSize(0, 0)
         self.sidebar.hide()
         self.header_widget.hide()
         self.categories_panel.hide()
@@ -519,6 +522,8 @@ class MainWindow(legacy.MainWindow):
         self.showNormal()
         if self._fullscreen_was_maximized:
             self.showMaximized()
+        if self._saved_minimum_size is not None:
+            self.setMinimumSize(self._saved_minimum_size)
         self.sidebar.show()
         self.header_widget.show()
         self.categories_panel.show()
