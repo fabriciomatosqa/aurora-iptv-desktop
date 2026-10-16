@@ -102,6 +102,7 @@ class MainWindow(QMainWindow):
         self.series_name = ''
         self.offset = 0
         self.pending_resume = 0
+        self._completed_playback = False
         self.thread = None
         self.worker = None
         self.setWindowTitle('AURORA IPTV | Desktop')
@@ -445,6 +446,7 @@ class MainWindow(QMainWindow):
         if not item.get('url'):
             return
         self._save_progress()
+        self._completed_playback = False
         self.playing = item
         self.playing_playlist = self.playlist_id
         self.now.setText('REPRODUZINDO · ' + item.get('group_name', '').upper())
@@ -463,6 +465,9 @@ class MainWindow(QMainWindow):
             self._save_progress()
             self.play.setText('▶ Reproduzir')
         elif self.playing:
+            if self.player.mediaStatus() == QMediaPlayer.MediaStatus.EndOfMedia:
+                self._completed_playback = False
+                self.player.setPosition(0)
             self.player.play()
             self.play.setText('Ⅱ Pausar')
         elif self.selected and self.selected.get('url'):
@@ -486,17 +491,27 @@ class MainWindow(QMainWindow):
             self._save_progress(completed=True)
 
     def _save_progress(self, completed=False):
-        if not self.playing or self.playing_playlist is None or self.playing.get('kind') == 'live':
+        if (not self.playing or self.playing_playlist is None
+                or self.playing.get('kind') == 'live' or self._completed_playback):
             return
         position = self.player.position()
         duration = self.player.duration()
         done = completed or (duration > 0 and position >= duration * 0.95)
         self.library.save_progress(self.playing_playlist, self.playing['key'], 0 if done else position // 1000)
+        if done:
+            self._completed_playback = True
 
     def _player_error(self, error, error_string):
-        if error != QMediaPlayer.Error.NoError:
-            self.status.setText('Não foi possível reproduzir. Verifique o servidor e o formato de vídeo.')
-            self.play.setText('▶ Reproduzir')
+        if error == QMediaPlayer.Error.NoError:
+            return
+        messages = {
+            QMediaPlayer.Error.NetworkError: 'Falha de rede ao abrir a transmissão. Confira a conexão e o servidor.',
+            QMediaPlayer.Error.FormatError: 'O formato ou codec não é compatível com o reprodutor instalado.',
+            QMediaPlayer.Error.AccessDeniedError: 'A transmissão negou o acesso. Verifique permissões e autenticação.',
+            QMediaPlayer.Error.ResourceError: 'Não foi possível abrir o endereço. O stream pode estar indisponível.',
+        }
+        self.status.setText(messages.get(error, 'Não foi possível reproduzir este conteúdo.'))
+        self.play.setText('▶ Tentar novamente')
 
     def _prev(self):
         if self.mode == 'episodes':
