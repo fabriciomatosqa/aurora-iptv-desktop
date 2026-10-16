@@ -14,7 +14,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
-    QPushButton, QSlider, QSplitter, QVBoxLayout, QWidget, QMenu,
+    QPushButton, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu,
 )
 
 from . import app as legacy
@@ -63,6 +63,38 @@ class AuroraBanner(QFrame):
         overlay.setColorAt(0.8,QColor(4,14,27,65))
         overlay.setColorAt(1,QColor(4,14,27,160))
         p.fillRect(self.rect(),overlay)
+
+
+class PlayerSplash(QFrame):
+    """Keep the screen useful and branded before a playable item is selected."""
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("playerSplash")
+        self.setStyleSheet("""
+            QFrame#playerSplash {
+                background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+                    stop:0 #0b2639,stop:0.40 #174c60,stop:0.75 #253867,stop:1 #21143e);
+                border:1px solid #37717c;border-radius:14px;
+            }
+        """)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(26,24,26,24)
+        layout.setSpacing(13)
+        layout.addStretch(2)
+        emblem = QLabel("✦")
+        emblem.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        emblem.setStyleSheet("background:transparent;color:#76f3d6;font-size:66px;")
+        layout.addWidget(emblem)
+        heading = QLabel("AURORA IPTV")
+        heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        heading.setStyleSheet("background:transparent;color:#f2ffff;font-size:29px;font-weight:900;")
+        layout.addWidget(heading)
+        description = QLabel("Escolha um canal, filme ou episódio para começar")
+        description.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        description.setWordWrap(True)
+        description.setStyleSheet("background:transparent;color:#bee7e4;font-size:14px;")
+        layout.addWidget(description)
+        layout.addStretch(2)
 
 
 class Covers(QObject):
@@ -343,7 +375,12 @@ class MainWindow(legacy.MainWindow):
         self.video = QVideoWidget()
         self.video.setMinimumHeight(200)
         self.video.setStyleSheet("background:#030b13;")
-        play_layout.addWidget(self.video,1)
+        self.player_splash = PlayerSplash()
+        self.video_stage = QStackedWidget()
+        self.video_stage.addWidget(self.player_splash)
+        self.video_stage.addWidget(self.video)
+        self.video_stage.setCurrentWidget(self.player_splash)
+        play_layout.addWidget(self.video_stage,1)
         self.player = QMediaPlayer(self)
         self.audio = QAudioOutput(self)
         self.audio.setVolume(.75)
@@ -407,6 +444,16 @@ class MainWindow(legacy.MainWindow):
         self.guide_thread = None
         self.setMinimumSize(1150,680)
         self.resize(1580,900)
+
+    def _start(self, item):
+        super()._start(item)
+        if item.get("url"):
+            self.video_stage.setCurrentWidget(self.video)
+
+    def _player_error(self, error, error_string):
+        super()._player_error(error,error_string)
+        if error != QMediaPlayer.Error.NoError:
+            self.video_stage.setCurrentWidget(self.player_splash)
 
     def _theme_apply(self):
         super()._theme_apply()
