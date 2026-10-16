@@ -36,15 +36,73 @@ def content_id(url: str) -> str:
 
 
 def kind_of(group: str, title: str, url: str) -> str:
-    # Episode names take precedence even when provider classifies series as "VOD".
-    if EPISODE.search(title) or ALT_EPISODE.search(title) or SERIES_TAG.search(group):
-        return 'series'
-    path = urlsplit(url).path.lower()
-    if '/series/' in path:
-        return 'series'
-    if MOVIE_TAG.search(group) or '/movie/' in path or '/vod/' in path:
-        return 'movie'
-    return 'live'
+    """Prefer provider URL semantics, then playlist group and filename.
+
+    Unknown content is live only as a last resort. A generic genre without
+    'Filmes' is still a movie, not a TV channel.
+    """
+    group_fold = group.casefold()
+    title_fold = title.casefold()
+    path = urlsplit(url).path.casefold()
+    if EPISODE.search(title) or ALT_EPISODE.search(title):
+        return "series"
+    if "/series/" in path or SERIES_TAG.search(group):
+        return "series"
+    if "/movie/" in path or "/vod/" in path:
+        return "movie"
+    if "/live/" in path:
+        return "live"
+    if MOVIE_TAG.search(group):
+        return "movie"
+    # Some Xtream-like services use genre-only group names without "Filmes".
+    if re.search(r"(?i)\b(a[cç][aã]o|terror|horror|com[eé]dia|comedy|drama|romance|suspense|thriller|fic[cç][aã]o|animation|anima[cç][aã]o|document[aá]rio|aventura|adventure|faroeste|western|lan[cç]amentos|cinema|4k\s*filmes?)\b", group):
+        return "movie"
+    # Video files are predominantly VOD. Episodes were recognized above.
+    if re.search(r"(?i)\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v)(?:$|[?#])", path):
+        return "movie"
+    if re.search(r"(?i)\b(ao\s*vivo|canais?|tv\s*aberta|sportv|premiere|jornalismo|not[ií]cias|futebol|esportes?|24h|radio|r[aá]dio)\b", group):
+        return "live"
+    # Movie titles often include a release year while live channels typically
+    # carry a quality marker. Use this only when there is no stronger signal.
+    if re.search(r"\((?:19|20)\d{2}\)\s*$", title_fold) and not re.search(r"(?i)\b(tv|hd|fhd|uhd|4k|24h)\b", group):
+        return "movie"
+    return "live"
+
+
+def parse_extinf(line: str) -> dict[str, str]:
+    """Parse EXTINF with attributes before *or after* the first comma.
+
+    Several IPTV generators emit '#EXTINF:-1, tvg-logo="..." group-title="...",Title'.
+    A normal split(',', 1) exposes metadata as the item title; this parser
+    finds the delimiter outside quotes and after the final metadata attribute.
+    """
+    attrs_matches = list(ATTR.finditer(line))
+    attrs = {m.group(1).lower(): m.group(2) for m in attrs_matches}
+    last_attr_end = max((m.end() for m in attrs_matches), default=0)
+    commas = []
+    quoted = False
+    for pos, char in enumerate(line):
+        if char == '"':
+            quoted = not quoted
+        elif char == "," and not quoted:
+            commas.append(pos)
+    delim = next((p for p in commas if p >= last_attr_end), None)
+    if delim is None and commas and commas[0] < last_attr_end:
+        # Malformed provider line without a final title separator.
+        suffix = line[last_attr_end:].strip(" \t,")
+        title = suffix if suffix and "=" not in suffix else attrs.get("tvg-name", "")
+    else:
+        if delim is None and commas:
+            delim = commas[0]
+        title = line[delim + 1:].strip() if delim is not None else attrs.get("tvg-name", "")
+    if not title or title.startswith(("tvg-logo=", "group-title=", "tvg-id=")):
+        title = attrs.get("tvg-name", "") or title
+    return {
+        "title": title or "Sem título",
+        "group": attrs.get("group-title", ""),
+        "logo": attrs.get("tvg-logo", ""),
+        "tvg_id": attrs.get("tvg-id", ""),
+    }
 
 
 def episode_info(title: str) -> tuple[str, int | None, int | None]:
@@ -79,14 +137,7 @@ def parse_m3u(lines: Iterable[str]) -> Iterator[Entry]:
         if line.startswith('#EXT-X-TARGETDURATION') or line.startswith('#EXT-X-MEDIA-SEQUENCE'):
             raise ValueError('Este arquivo é uma transmissão HLS, não uma lista de canais M3U.')
         if line.startswith('#EXTINF:'):
-            attrs = {k.lower(): v for k, v in ATTR.findall(line)}
-            label = line.split(',', 1)[1].strip() if ',' in line else ''
-            info = {
-                'title': label or attrs.get('tvg-name', '') or 'Sem título',
-                'group': attrs.get('group-title', ''),
-                'logo': attrs.get('tvg-logo', ''),
-                'tvg_id': attrs.get('tvg-id', ''),
-            }
+            info = parse_extinf(line)
             continue
         if line.startswith('#EXTGRP:') and info is not None:
             info['group'] = line[len('#EXTGRP:'):].strip()
