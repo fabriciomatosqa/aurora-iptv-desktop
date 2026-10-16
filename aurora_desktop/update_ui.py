@@ -314,10 +314,27 @@ class UpdateController(QObject):
         if result["status"] == "ok" and result["version"] == __version__:
             self.window.status.setText(f"AURORA atualizado com sucesso para v{__version__}.")
         elif result["status"] == "failed":
+            details = ("A atualização não foi concluída. "
+                       f"Código: {result['exit_code']}. A instalação anterior foi preservada. ")
+            if sys.platform.startswith("linux"):
+                from .updater import update_directory, parse_version
+                version = result["version"]
+                safe = version.replace("-beta.", "-beta").replace("-rc.", "-rc")
+                deb = update_directory() / f"aurora-iptv_{safe}_amd64.deb"
+                if parse_version(version) is not None and deb.is_file():
+                    answer = QMessageBox.question(
+                        self.window, "Falha na instalação Debian",
+                        details + "O pacote .deb foi baixado e verificado. "
+                        "A autorização administrativa pode ter sido recusada ou indisponível. "
+                        "Deseja abrir o pacote no gerenciador de programas do Linux? "
+                        "Você não precisa acessar o GitHub.",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                    if answer == QMessageBox.StandardButton.Yes:
+                        self._open_local_deb(
+                            deb,"O pacote oficial já está no computador.")
+                    return
             QMessageBox.warning(self.window, "Falha na atualização",
-                "Não foi possível concluir a atualização silenciosa. "
-                f"Código: {result['exit_code']}. A instalação anterior foi preservada. "
-                "Consulte o arquivo de diagnóstico da pasta de atualizações: "
+                details + "Consulte o registro na pasta de atualizações: "
                 + ("debian-update.log" if sys.platform.startswith("linux") else "innosetup-update.log") + ".")
         else:
             self.window.status.setText("Atualização não confirmada. Confira a versão instalada.")
