@@ -131,7 +131,16 @@ def discover_release(current: str = __version__, channel: str = "beta",
         if not _trusted_url(page, asset=True) or urlsplit(page).hostname != "github.com":
             continue
         assets = item.get("assets") or []
-        expected_name = "AURORA-IPTV-Desktop-Setup.exe" if platform == "windows" else "AURORA-IPTV-Desktop-linux-x86_64.tar.gz"
+        if platform == "windows":
+            expected_name = "AURORA-IPTV-Desktop-Setup.exe"
+        elif platform == "linux":
+            # Linux installation uses the versioned Debian package, never the portable tarball.
+            m = _VERSION_RE.fullmatch(tag)
+            major, minor, patch, qualifier, number = m.groups()
+            suffix = f"-{('beta' if qualifier.lower() == 'b' else qualifier.lower())}{number}" if qualifier else ""
+            expected_name = f"aurora-iptv_{major}.{minor}.{patch}{suffix}_amd64.deb"
+        else:
+            raise UpdateError("Sistema operacional não suportado para atualização.")
         match = next((a for a in assets if isinstance(a,dict) and a.get("name")==expected_name),None)
         asset = None
         if match:
@@ -183,9 +192,9 @@ def download_verified(installer: ReleaseAsset, folder: Path | None = None,
                       client=requests) -> Path:
     if (not _trusted_url(installer.url,asset=True)
             or urlsplit(installer.url).hostname != "github.com"
-            or installer.name not in (
-                "AURORA-IPTV-Desktop-Setup.exe",
-                "AURORA-IPTV-Desktop-linux-x86_64.tar.gz")):
+            or not (installer.name == "AURORA-IPTV-Desktop-Setup.exe"
+                    or re.fullmatch(r"aurora-iptv_[0-9]+\.[0-9]+\.[0-9]+(?:-(?:beta|rc)[0-9]+)?_amd64\.deb",
+                                    installer.name))):
         raise UpdateError("Arquivo de atualização não autorizado.")
     match = _DIGEST_RE.fullmatch(installer.digest)
     if not match:
@@ -337,4 +346,66 @@ def launch_windows_silent(installer: Path, popen=None,
                              | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)))
     except OSError as exc:
         raise UpdateError("Não foi possível iniciar o auxiliar. A versão atual foi mantida.") from exc
+    return status
+
+
+def linux_install_supported() -> bool:
+    """Only a system-installed DEB can be updated through apt.
+
+    Portable TAR.GZ editions must not silently install into /opt or change
+    their installation method.
+    """
+    return (sys.platform.startswith("linux")
+            and bool(getattr(sys, "frozen", False))
+            and Path(sys.executable).resolve() == Path("/opt/aurora-iptv/AURORA-IPTV"))
+
+
+def _linux_script() -> Path:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    return base / "aurora_desktop" / "apply_update_linux.sh"
+
+
+def launch_linux_update(package: Path, *, target_version: str,
+                        popen=None, installed_exe: Path | None = None,
+                        helper_source: Path | None = None,
+                        parent_pid: int | None = None) -> Path:
+    """Launch a detached, unprivileged helper for authenticated DEB update.
+
+    Only apt-get runs as root, and only after a PolicyKit prompt.
+    """
+    if not linux_install_supported():
+        raise UpdateError("Atualização automática requer a edição Debian instalada.")
+    if not shutil.which("pkexec"):
+        raise UpdateError("Autorização PolicyKit indisponível neste Linux.")
+    if parse_version(target_version) is None:
+        raise UpdateError("Versão de destino inválida.")
+    package = package.resolve()
+    if not re.fullmatch(r"aurora-iptv_[0-9]+\.[0-9]+\.[0-9]+(?:-(?:beta|rc)[0-9]+)?_amd64\.deb",
+                        package.name) or not package.is_file():
+        raise UpdateError("Pacote Debian verificado não encontrado.")
+    exe = (installed_exe or Path(sys.executable)).resolve()
+    if exe.name != "AURORA-IPTV" or not exe.is_file():
+        raise UpdateError("Executável Debian instalado não encontrado.")
+    original = helper_source or _linux_script()
+    if not original.is_file():
+        raise UpdateError("O auxiliar Linux não foi incluído nesta versão.")
+    folder = update_directory()
+    helper = folder / "aurora-apply-update.sh"
+    status = update_status_path()
+    log = folder / "debian-update.log"
+    try:
+        shutil.copyfile(original,helper)
+        helper.chmod(0o700)
+    except OSError as exc:
+        raise UpdateError("Não foi possível preparar a atualização Debian.") from exc
+    if popen is None:
+        popen = subprocess.Popen
+    cmd = ["/bin/sh",str(helper),str(parent_pid if parent_pid is not None else os.getpid()),
+           str(package),str(exe),str(status),str(log),target_version]
+    try:
+        popen(cmd,cwd=str(folder),
+              stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+              close_fds=True,start_new_session=True)
+    except OSError as exc:
+        raise UpdateError("Não foi possível iniciar o auxiliar Debian.") from exc
     return status
