@@ -1,4 +1,4 @@
-"""AURORA IPTV 0.2 desktop UI: groups, scrollable covers and XMLTV football."""
+"""AURORA IPTV Desktop: responsive aurora-themed player and library."""
 from __future__ import annotations
 
 from collections import deque
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from . import app as legacy
 from .catalog import LibraryV2, guess_xtream_epg
+from .ui_icons import icon_for
 
 # The original Qt player keeps the same settings, DB path, resuming and playlist management.
 legacy.Library = LibraryV2
@@ -221,6 +222,7 @@ class MainWindow(legacy.MainWindow):
 
     def _build(self):
         root = QWidget(self)
+        root.setObjectName("appRoot")
         self.setCentralWidget(root)
         base = QHBoxLayout(root)
         base.setSpacing(0)
@@ -230,8 +232,8 @@ class MainWindow(legacy.MainWindow):
         sidebar.setObjectName("sidebar")
         sidebar.setFixedWidth(226)
         side = QVBoxLayout(sidebar)
-        side.setContentsMargins(15,20,15,18)
-        side.setSpacing(9)
+        side.setContentsMargins(18,22,18,20)
+        side.setSpacing(10)
         logo = QLabel()
         icon = QPixmap(str(asset("aurora_icon.png")))
         if not icon.isNull():
@@ -245,24 +247,35 @@ class MainWindow(legacy.MainWindow):
         brand.setObjectName("brand")
         side.addWidget(brand)
         from . import __version__
-        side.addWidget(QLabel(f"DESKTOP  ·  v{__version__}"))
+        version = QLabel(f"DESKTOP  ·  v{__version__}")
+        version.setObjectName("versionTag")
+        side.addWidget(version)
         side.addSpacing(18)
         self.nav = {}
         for mode,title in [
-            ("home","⌂  Início"),("live","▣  Ao vivo"),("movie","▤  Filmes"),
-            ("series","▥  Séries"),("football","⚽  Futebol"),
-            ("favorites","☆  Favoritos"),("settings","⚙  Configurações")
+            ("home","Início"),("live","Ao vivo"),("movie","Filmes"),
+            ("series","Séries"),("football","Futebol"),
+            ("favorites","Favoritos"),("settings","Configurações")
         ]:
             button = QPushButton(title)
+            button.setObjectName("navButton")
+            button.setIcon(icon_for(mode))
+            button.setIconSize(QSize(24,24))
+            button.setMinimumHeight(48)
             button.setCheckable(True)
+            button.setToolTip(title)
             button.clicked.connect(lambda checked=False,m=mode:self.navigate(m))
             self.nav[mode] = button
             side.addWidget(button)
         side.addStretch()
-        side.addWidget(QLabel("✧ Luzes da aurora, o seu conteúdo."))
+        footer = QLabel("✦  Luzes da aurora, seu universo.")
+        footer.setObjectName("sidebarFooter")
+        footer.setWordWrap(True)
+        side.addWidget(footer)
         base.addWidget(sidebar)
 
         shell = QWidget()
+        shell.setObjectName("contentShell")
         outer = QVBoxLayout(shell)
         outer.setContentsMargins(16,15,16,15)
         outer.setSpacing(14)
@@ -318,7 +331,7 @@ class MainWindow(legacy.MainWindow):
         self.subtitle.setWordWrap(True)
         content_layout.addWidget(self.subtitle)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("⌕  Buscar em todo o conteúdo...")
+        self.search.setPlaceholderText("Buscar canais, filmes, séries...")
         self.search.textChanged.connect(self._search)
         content_layout.addWidget(self.search)
         self.results = QListWidget()
@@ -367,7 +380,7 @@ class MainWindow(legacy.MainWindow):
         play_layout.setContentsMargins(17,17,17,14)
         play_layout.setSpacing(10)
         self.now = QLabel("AURORA  ·  PRONTO PARA ASSISTIR")
-        self.now.setObjectName("muted")
+        self.now.setObjectName("playerEyebrow")
         play_layout.addWidget(self.now)
         self.video_title = QLabel("Escolha um conteúdo")
         self.video_title.setWordWrap(True)
@@ -376,9 +389,10 @@ class MainWindow(legacy.MainWindow):
         self.video = QVideoWidget()
         self.video.setMinimumHeight(200)
         self.video.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.video.setStyleSheet("background:#030b13;")
+        self.video.setStyleSheet("background:#091b2a;")
         self.player_splash = PlayerSplash()
         self.video_stage = QStackedWidget()
+        self.video_stage.setObjectName("videoStage")
         self.video_stage.addWidget(self.player_splash)
         self.video_stage.addWidget(self.video)
         self.video_stage.setCurrentWidget(self.player_splash)
@@ -401,10 +415,13 @@ class MainWindow(legacy.MainWindow):
         self.seek.setRange(0,0)
         controls.addWidget(self.seek,1)
         self.time = QLabel("00:00 / 00:00")
+        self.time.setObjectName("playerTime")
         controls.addWidget(self.time)
         play_layout.addLayout(controls)
         actions = QHBoxLayout()
-        self.favorite = QPushButton("☆ Favoritar")
+        self.favorite = QPushButton("Favoritar")
+        self.favorite.setIcon(icon_for("favorites"))
+        self.favorite.setIconSize(QSize(21,21))
         self.favorite.clicked.connect(self._favorite)
         actions.addWidget(self.favorite)
         fullscreen = QPushButton("⛶ Tela cheia")
@@ -419,7 +436,7 @@ class MainWindow(legacy.MainWindow):
         actions.addWidget(volume)
         play_layout.addLayout(actions)
         self.status = QLabel("Selecione sua playlist para começar.")
-        self.status.setObjectName("muted")
+        self.status.setObjectName("statusInfo")
         self.status.setWordWrap(True)
         play_layout.addWidget(self.status)
         panels.addWidget(player_panel)
@@ -465,54 +482,248 @@ class MainWindow(legacy.MainWindow):
             self.video_stage.setCurrentWidget(self.player_splash)
 
     def _theme_apply(self):
-        super()._theme_apply()
-        choice = self.settings.value("theme","system")
+        # Replace, NEVER concatenate, stylesheets: the previous implementation
+        # appended styles on each theme switch and introduced black QLabel bars.
+        choice = self.settings.value("theme", "system")
         dark = choice == "dark" or (
             choice == "system" and
             QApplication.instance().styleHints().colorScheme() != Qt.ColorScheme.Light
         )
-        fg = "#ebfcff" if dark else "#16374b"
-        muted = "#a4c0ca" if dark else "#587787"
-        bg = "#071525" if dark else "#eaf3f6"
-        panel = "#10273b" if dark else "#ffffff"
-        border = "#285268" if dark else "#bfd5df"
-        hover = "#1d4555" if dark else "#dcefed"
-        accent = "#67e4ce" if dark else "#127c88"
-        active = "#214c5e" if dark else "#cef0ea"
-        app = QApplication.instance()
-        app.setStyleSheet(app.styleSheet() + f"""
-            QWidget {{font-size:14px;}}
-            QMainWindow {{background:{bg};}}
-            QMenuBar {{background:{bg}; color:{fg}; padding:5px;border:0;}}
-            QMenuBar::item:selected {{background:{hover};border-radius:6px;}}
-            QFrame#sidebar {{background:{'#0b2033' if dark else '#d9eef1'};
-                border-right:1px solid {border};}}
-            QFrame#panel {{background:{panel};border:1px solid {border};border-radius:16px;}}
-            QLabel#brand {{font-size:19px;font-weight:900;color:{accent};}}
-            QLabel#heading {{font-size:19px;font-weight:800;color:{fg};}}
-            QLabel#muted {{color:{muted};font-size:12px;}}
-            QPushButton {{font-size:14px;font-weight:600;border-radius:10px;
-                background:{hover};border:1px solid {border};padding:10px 13px;}}
-            QPushButton:hover {{border:1px solid {accent};}}
-            QPushButton:checked {{background:{active};border:1px solid {accent};color:{fg};}}
-            QPushButton#primary {{background:{accent};border:0;color:{'#09232d' if dark else '#ffffff'};font-weight:800;}}
-            QLineEdit,QComboBox {{font-size:14px;padding:11px 12px;
-                background:{'#102d43' if dark else '#f7fcfd'};
-                border:1px solid {border};border-radius:10px;}}
-            QLineEdit:focus,QComboBox:focus {{border-color:{accent};}}
-            QListWidget {{background:transparent;border:0;outline:0;
-                font-size:14px;color:{fg};}}
-            QListWidget::item {{border:1px solid transparent;border-radius:10px;padding:10px 8px;}}
-            QListWidget::item:hover {{background:{hover};}}
-            QListWidget::item:selected {{background:{active};border:1px solid {accent};color:{fg};}}
-            QListWidget#groups::item {{padding:13px 12px;}}
-            QListWidget#groups::item:selected {{border-left:3px solid {accent};}}
-            QSplitter::handle {{background:transparent;width:7px;}}
-            QScrollBar:vertical {{width:9px;background:transparent;}}
-            QScrollBar::handle:vertical {{background:{border};border-radius:4px;min-height:42px;}}
-            QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical {{height:0px;}}
-            QToolTip {{background:{panel};color:{fg};border:1px solid {accent};}}
+        self._theme_dark = dark
+        bg = "#071624" if dark else "#edf5f8"
+        side = "#091f31" if dark else "#e2f0f4"
+        panel = "#102b40" if dark else "#ffffff"
+        panel_end = "#0e2438" if dark else "#f8fbfd"
+        inner = "#152f45" if dark else "#f1f8fa"
+        row = "#17364b" if dark else "#e9f4f5"
+        border = "#295069" if dark else "#bed7e0"
+        muted = "#aac6d6" if dark else "#577487"
+        text = "#f1fbff" if dark else "#173448"
+        accent = "#6cebd6" if dark else "#127f82"
+        accent_text = "#06242b" if dark else "#ffffff"
+        selected = "#244c5c" if dark else "#ccefe9"
+        hover = "#215069" if dark else "#d9f1ed"
+        blue = "#82bbff" if dark else "#2377b1"
+        track = "#24465c" if dark else "#ccdee4"
+        gold = "#ffdc69" if dark else "#be8b1c"
+        menu = "#112a3e" if dark else "#fbfeff"
+        self.setAutoFillBackground(True)
+        QApplication.instance().setStyleSheet(f"""
+            QWidget {{
+                color:{text};
+                font-family:'Segoe UI','Inter','Noto Sans',sans-serif;
+                font-size:14px;
+            }}
+            QMainWindow, QWidget#appRoot, QWidget#contentShell {{
+                background:{bg};
+            }}
+            QLabel {{
+                background:transparent;
+                border:none;
+                padding:0;
+            }}
+            QFrame#sidebar {{
+                background:qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 {side},stop:1 {bg});
+                border:none;
+                border-right:1px solid {border};
+            }}
+            QFrame#panel {{
+                background:qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 {panel},stop:1 {panel_end});
+                border:1px solid {border};
+                border-radius:16px;
+            }}
+            QFrame#panel QLabel {{
+                background:transparent;
+            }}
+            QLabel#brand {{
+                font-size:19px;font-weight:800;color:{accent};
+            }}
+            QLabel#versionTag {{
+                font-size:12px;color:{muted};padding:4px 0;
+            }}
+            QLabel#sidebarFooter {{
+                font-size:11px;color:{muted};padding:9px 3px;
+                border-top:1px solid {border};
+            }}
+            QLabel#heading {{
+                font-size:19px;font-weight:750;color:{text};
+                padding:3px 0 2px 0;
+            }}
+            QLabel#muted {{
+                font-size:12px;color:{muted};padding:2px 0;
+            }}
+            QLabel#playerEyebrow {{
+                font-size:11px;color:{accent};font-weight:650;
+                padding:5px 8px;border-radius:6px;
+                background:{inner};
+            }}
+            QLabel#playerTime {{
+                color:{muted};font-size:12px;
+                padding:5px 8px;border-radius:7px;
+                background:{inner};
+            }}
+            QLabel#statusInfo {{
+                color:{muted};font-size:12px;
+                padding:8px 10px;border-radius:9px;
+                background:{inner};border:1px solid {border};
+            }}
+            QMenuBar {{
+                background:{bg};color:{text};
+                padding:5px 10px;border:0;
+            }}
+            QMenuBar::item {{
+                padding:8px 12px;border-radius:7px;
+            }}
+            QMenuBar::item:selected {{
+                background:{hover};
+            }}
+            QMenu {{
+                background:{menu};color:{text};
+                border:1px solid {border};padding:6px;
+            }}
+            QMenu::item {{padding:8px 25px;border-radius:5px;}}
+            QMenu::item:selected {{background:{hover};}}
+            QPushButton {{
+                color:{text};background:{row};
+                border:1px solid {border};border-radius:11px;
+                padding:11px 13px;font-size:13px;font-weight:650;
+                min-height:17px;
+            }}
+            QPushButton:hover {{
+                background:{hover};border-color:{accent};
+            }}
+            QPushButton:pressed {{background:{selected};}}
+            QPushButton:disabled {{
+                color:{muted};border-color:{border};
+            }}
+            QPushButton#navButton {{
+                text-align:left;
+                padding:9px 13px 9px 16px;
+                background:{inner};
+                border:1px solid transparent;
+                border-radius:11px;
+                font-size:14px;font-weight:650;
+            }}
+            QPushButton#navButton:hover {{
+                background:{hover};
+                border-color:{border};
+            }}
+            QPushButton#navButton:checked {{
+                background:{selected};
+                border:1px solid {accent};
+                border-left:3px solid {accent};
+                color:{text};
+            }}
+            QPushButton#primary {{
+                background:{accent};color:{accent_text};
+                border:1px solid {accent};
+                font-weight:800;
+            }}
+            QPushButton#primary:hover {{
+                background:{blue};border-color:{blue};
+                color:{accent_text};
+            }}
+            QLineEdit,QComboBox {{
+                background:{inner};color:{text};
+                border:1px solid {border};border-radius:10px;
+                padding:10px 12px;selection-background-color:{selected};
+                min-height:19px;
+            }}
+            QLineEdit:focus,QComboBox:focus {{
+                border:1px solid {accent};
+            }}
+            QLineEdit::placeholder {{color:{muted};}}
+            QComboBox QAbstractItemView {{
+                background:{menu};color:{text};
+                selection-background-color:{selected};
+                border:1px solid {border};
+            }}
+            QListWidget {{
+                background:transparent;color:{text};
+                border:0;outline:0;
+                font-size:13px;
+            }}
+            QListWidget::item {{
+                background:transparent;
+                border:1px solid transparent;
+                border-radius:11px;
+                padding:10px 10px;
+            }}
+            QListWidget::item:hover {{
+                background:{hover};
+            }}
+            QListWidget::item:selected {{
+                background:{selected};
+                border:1px solid {accent};
+                color:{text};
+            }}
+            QListWidget#groups::item {{
+                background:{inner};
+                border:1px solid transparent;
+                border-radius:10px;
+                padding:12px 12px;
+                margin:2px 1px;
+            }}
+            QListWidget#groups::item:hover {{
+                background:{hover};
+            }}
+            QListWidget#groups::item:selected {{
+                background:{selected};border:1px solid {accent};
+                border-left:3px solid {accent};
+                color:{text};
+            }}
+            QListWidget#results::item {{
+                background:{row};
+                padding:9px 9px;
+                margin:3px 1px;
+            }}
+            QListWidget#results::item:selected {{
+                background:{selected};
+                border:1px solid {accent};
+            }}
+            QSplitter::handle {{
+                background:{bg};
+                width:7px;
+            }}
+            QScrollBar:vertical {{
+                background:transparent;
+                width:10px;margin:2px 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background:{track};border-radius:5px;min-height:45px;
+            }}
+            QScrollBar::handle:vertical:hover {{background:{accent};}}
+            QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical {{
+                height:0px;border:none;
+            }}
+            QScrollBar:horizontal {{
+                background:transparent;height:8px;
+            }}
+            QScrollBar::handle:horizontal {{
+                background:{track};border-radius:4px;min-width:24px;
+            }}
+            QSlider::groove:horizontal {{
+                height:5px;background:{track};border-radius:3px;
+            }}
+            QSlider::sub-page:horizontal {{
+                background:{accent};border-radius:3px;
+            }}
+            QSlider::handle:horizontal {{
+                width:14px;height:14px;margin:-5px 0;
+                background:{accent};border:2px solid {panel};
+                border-radius:8px;
+            }}
+            QToolTip {{
+                color:{text};background:{menu};
+                border:1px solid {accent};padding:5px;
+            }}
         """)
+        # Icons are drawn at 3x resolution; gold is reserved for favorites.
+        for name, button in self.nav.items():
+            button.setIcon(icon_for(name, 24, light=not dark))
+        self.favorite.setIcon(icon_for("favorites", 22, light=not dark))
 
     def navigate(self, mode):
         self.mode = mode
@@ -705,7 +916,7 @@ class MainWindow(legacy.MainWindow):
         self.favorite.setEnabled(usable)
         if usable:
             k,_,_ = self._favorite_key(row)
-            self.favorite.setText("★ Remover favorito" if self.library.is_favorite(self.playlist_id,k) else "☆ Favoritar")
+            self.favorite.setText("Remover favorito" if self.library.is_favorite(self.playlist_id,k) else "Favoritar")
 
     def _open(self,widget):
         row = widget.data(Qt.ItemDataRole.UserRole)
