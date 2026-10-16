@@ -139,6 +139,8 @@ def test_linux_script_waits_for_exit_runs_mock_pkexec_and_reopens(tmp_path):
                                  str(status),str(log),"0.6.0-beta.9"],env=env)
         time.sleep(0.2)
         assert not marker.exists(), "Apt should not run while parent is alive"
+        # Reap the fake app; otherwise kill -0 still sees its zombie PID.
+        parent.wait(timeout=5)
         helper.wait(timeout=10)
         assert helper.returncode==0
         deadline=time.monotonic()+5
