@@ -17,6 +17,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+from datetime import datetime, timezone
 from typing import Callable
 
 import requests
@@ -157,6 +159,24 @@ def update_directory() -> Path:
     return root
 
 
+def record_update_step(stage: str, detail: str = "", version: str | None = None) -> None:
+    """Keep a local, bounded troubleshooting log (no playlist URLs/credentials)."""
+    if not re.fullmatch(r"[a-z-]{1,35}", stage):
+        return
+    try:
+        folder = update_directory()
+        path = folder / "update-debug.log"
+        if path.exists() and path.stat().st_size > 256 * 1024:
+            previous = folder / "update-debug.previous.log"
+            path.replace(previous)
+        safe_detail = detail.replace("\r", " ").replace("\n", " ")[:200]
+        with path.open("a", encoding="utf-8") as log:
+            stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            log.write(f"{stamp} | {stage} | v{version or __version__} | {safe_detail}\n")
+    except OSError:
+        pass
+
+
 def download_verified(installer: ReleaseAsset, folder: Path | None = None,
                       progress: Callable[[int,int],None] | None = None,
                       cancelled: Callable[[],bool] | None = None,
@@ -178,6 +198,8 @@ def download_verified(installer: ReleaseAsset, folder: Path | None = None,
     temp = None
     digest = hashlib.sha256()
     received = 0
+    started = time.monotonic()
+    record_update_step("download-network", f"Iniciando {installer.name} ({installer.size} bytes)")
     try:
         with client.get(installer.url,stream=True,timeout=(10,90),
                         headers={"User-Agent":USER_AGENT}) as response:
@@ -202,8 +224,12 @@ def download_verified(installer: ReleaseAsset, folder: Path | None = None,
         if received!=installer.size or digest.hexdigest().lower()!=match.group(1).lower():
             raise UpdateError("A verificação SHA-256 falhou. O instalador não será executado.")
         os.replace(temp,target)
+        elapsed = max(0.001, time.monotonic() - started)
+        record_update_step("download-complete",
+                           f"{received} bytes; SHA-256 válido; {elapsed:.1f}s; {received / elapsed / 1048576:.1f} MB/s")
         return target
     except requests.RequestException as exc:
+        record_update_step("download-network-failed", "Conexão ou resposta HTTPS interrompida")
         raise UpdateError("Falha no download. A instalação atual foi preservada.") from exc
     finally:
         if temp is not None:
