@@ -1,10 +1,14 @@
 #define MyAppName "AURORA IPTV"
-#define MyAppVersion "0.5.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.6.0-beta.1"
+#endif
 #define MyAppExeName "AURORA-IPTV.exe"
 [Setup]
 AppId={{7E9AAB61-4913-4F3F-965F-3D7459381745}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+VersionInfoDescription=AURORA IPTV Desktop Installer
+VersionInfoProductName=AURORA IPTV Desktop
 AppPublisher=AURORA IPTV
 DefaultDirName={localappdata}\Programs\AURORA IPTV
 DefaultGroupName=AURORA IPTV

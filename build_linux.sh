@@ -4,6 +4,8 @@ cd "$(dirname "$0")"
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-build.txt
 .venv/bin/python build_assets.py
+.venv/bin/python build_version.py
+debian_version="$(cat build/debian_version.txt)"
 .venv/bin/python -m PyInstaller --noconfirm --clean --windowed --onedir --name AURORA-IPTV --add-data "assets/aurora_icon.png:assets" --add-data "assets/aurora_banner.jpg:assets" run.py
 mkdir -p releases
 tar -czf releases/AURORA-IPTV-Desktop-linux-x86_64.tar.gz -C dist AURORA-IPTV
@@ -25,9 +27,9 @@ Terminal=false
 Type=Application
 Categories=AudioVideo;Video;Player;
 ENDDESKTOP
-cat > "$stage/DEBIAN/control" <<'ENDCONTROL'
+cat > "$stage/DEBIAN/control" <<ENDCONTROL
 Package: aurora-iptv
-Version: 0.5.0
+Version: $debian_version
 Section: video
 Priority: optional
 Architecture: amd64
@@ -36,5 +38,5 @@ Depends: libc6, libgl1, libegl1, libxkbcommon0
 Description: AURORA IPTV Desktop
  Player M3U para Windows e Linux. Nenhum conteudo incluido.
 ENDCONTROL
-dpkg-deb --root-owner-group --build "$stage" releases/aurora-iptv_0.5.0_amd64.deb
+dpkg-deb --root-owner-group --build "$stage" "releases/aurora-iptv_${debian_version}_amd64.deb"
 echo 'Pacotes criados em releases/'
