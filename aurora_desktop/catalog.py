@@ -272,7 +272,7 @@ class LibraryV2(Library):
         """Reclassify a 0.1/0.2 catalog once, preserving URL-keyed favorites and progress."""
         with self.connect() as db:
             row = db.execute("SELECT version FROM classification_version WHERE playlist_id=?", (playlist_id,)).fetchone()
-            if row and row["version"] >= 4 and not force:
+            if row and row["version"] >= 5 and not force:
                 return
             provider_kinds = {r["normalized_name"]:r["kind"] for r in db.execute(
                 "SELECT normalized_name,kind FROM provider_category_kinds WHERE playlist_id=?", (playlist_id,))}
@@ -293,8 +293,8 @@ class LibraryV2(Library):
                 db.executemany("""UPDATE items SET title=?,group_name=?,logo=?,kind=?,
                     category=?,series_name=?,season=?,episode=? WHERE rowid=?""",updated)
                 cursor = batch[-1]["rowid"]
-            db.execute("""INSERT INTO classification_version VALUES (?,4)
-                ON CONFLICT(playlist_id) DO UPDATE SET version=4""", (playlist_id,))
+            db.execute("""INSERT INTO classification_version VALUES (?,5)
+                ON CONFLICT(playlist_id) DO UPDATE SET version=5""", (playlist_id,))
 
     def categories(self, playlist_id: int, kind: str) -> list[dict]:
         with self.connect() as db:
