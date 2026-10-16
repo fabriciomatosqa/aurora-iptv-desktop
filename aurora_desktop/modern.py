@@ -863,6 +863,17 @@ class MainWindow(legacy.MainWindow):
         super()._import_failed(message)
 
     def closeEvent(self,event):
+        controller = getattr(self, "update_controller", None)
+        if controller is not None:
+            if controller.downloader is not None and controller.downloader.isRunning():
+                controller.shutdown()
+                self.status.setText("Cancelando download de atualização antes de sair...")
+                event.ignore()
+                return
+            if controller.checker is not None and controller.checker.isRunning():
+                self.status.setText("Aguarde a verificação de atualizações terminar.")
+                event.ignore()
+                return
         if self.index_thread and self.index_thread.isRunning():
             QMessageBox.information(self,"Catálogo","Aguarde a organização dos conteúdos.")
             event.ignore()
@@ -897,5 +908,6 @@ def main():
     playlist_menu.addAction("Configurações",lambda:window.navigate("settings"))
     window.update_controller.attach_menu(window.menuBar())
     window.show()
+    QTimer.singleShot(350, window.update_controller.show_previous_result)
     QTimer.singleShot(6000, lambda: window.update_controller.check(manual=False))
     return app.exec()
