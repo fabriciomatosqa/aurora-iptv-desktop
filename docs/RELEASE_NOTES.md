@@ -1,17 +1,13 @@
-# AURORA IPTV Desktop 0.6.0 beta 5
+# AURORA IPTV Desktop 0.6.0 beta 6
 
-Atualização importante do instalador automático Windows.
+Beta destinada a testar a atualização online da v0.6.0-beta.5 para a v0.6.0-beta.6.
 
-## Falha encontrada e corrigida
-O diálogo QProgressDialog de download era fechado com close(), que pode disparar o evento canceled(). Como o código interpretava isso como cancelamento do usuário, descartava o instalador já verificado e deixava o AURORA aberto na versão anterior.
+- A beta 5 corrigiu o problema da janela de progresso Qt que cancelava a operação ao finalizar o download.
+- O aplicativo mostra os MB transferidos e verifica o tamanho exato e SHA-256 antes de executar o instalador.
+- Após a única autorização, o auxiliar externo aguarda o AURORA encerrar, instala com /VERYSILENT e reabre a nova versão.
+- O GitHub Actions testa o download real de um instalador Windows de mais de 40 MB publicado no Releases, sua integridade e a instalação silenciosa.
+- O registro local de depuração fica em %LOCALAPPDATA%/AURORA IPTV/updates/update-debug.log, sem playlists ou credenciais.
 
-## Novo comportamento
-- Ao autorizar, baixa o EXE inteiro do GitHub Releases, mostra MB recebidos e valida bytes + SHA-256.
-- A barra fica em 99% até a integridade ser confirmada, só então mostra 100%.
-- Ao finalizar o download, desativa o botão Cancelar, oculta o diálogo sem emitir canceled e aciona o auxiliar externo.
-- O auxiliar espera o aplicativo encerrar, executa Inno Setup /VERYSILENT e reabre o AURORA.
-- O arquivo update-debug.log na pasta LOCALAPPDATA/AURORA IPTV/updates informa cada fase e a duração real de download, sem URLs privadas.
-- Erros de download e integridade são informados explicitamente; sem iniciar instalação de arquivo inválido.
-- O histórico não aparece no menu, mas Releases antigos continuam preservados.
+Para testar: instale a beta 5 por cima da versão atual uma única vez. Abra Atualizações > Verificar atualizações agora e autorize a beta 6. Aguarde o fechamento, a instalação silenciosa e a reabertura automática.
 
-Esta beta serve de base de teste. Instale a beta 5 manualmente apenas uma vez; depois teste beta 5 para beta 6 dentro do aplicativo. Os testes automatizados não dispensam confirmação com seu Windows.
+Esta beta não altera a biblioteca IPTV.
