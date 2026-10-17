@@ -423,6 +423,48 @@ class Covers(QObject):
             self.queue.append(key)
             self._dispatch()
 
+    @staticmethod
+    def _show_preview(label: QLabel, url: str, image: QPixmap):
+        if label.property("artworkUrl") != url or image.isNull():
+            return
+        label.setPixmap(image.scaled(label.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation))
+        label.show()
+
+    def enqueue_preview(self, label: QLabel, url: str, kind: str = "movie"):
+        """Reuse the same network pipeline for the right-side synopsis poster."""
+        url=valid_artwork(url)
+        label.setProperty("artworkUrl",url)
+        label.clear()
+        label.hide()
+        if not url:
+            return
+        local=QUrl(url).toLocalFile() if url.startswith("file://") else (
+            url if Path(url).is_absolute() else "")
+        if local:
+            self._show_preview(label,url,QPixmap(local))
+            return
+        cached=image_cache_file(self.disk_dir,url)
+        if cached.is_file():
+            try:
+                if time.time()-cached.stat().st_mtime<30*86400:
+                    image=QPixmap()
+                    if image.loadFromData(cached.read_bytes()):
+                        self._show_preview(label,url,image)
+                        return
+            except OSError:
+                pass
+        if self.failed.get(url,0)>time.monotonic():
+            return
+        key=(self.generation,url)
+        if key in self.waiting:
+            self.waiting[key].append((label,kind))
+        elif len(self.queue)<500:
+            self.waiting[key]=[(label,kind)]
+            self.queue.append(key)
+            self._dispatch()
+
     def _dispatch(self):
         while self.active<5 and self.queue:
             generation,url=self.queue.popleft()
@@ -464,7 +506,9 @@ class Covers(QObject):
             if generation==self.generation:
                 for item,kind in self.waiting.get(key,[]):
                     try:
-                        if item.listWidget() is self.widget:
+                        if isinstance(item,QLabel):
+                            self._show_preview(item,url,pixmap)
+                        elif item.listWidget() is self.widget:
                             item.setIcon(self._icon_for(url,kind,pixmap))
                     except RuntimeError:
                         pass
@@ -913,11 +957,20 @@ class MainWindow(legacy.MainWindow):
         self.idle_synopsis_metadata.setObjectName("idleSynopsisMeta")
         self.idle_synopsis_metadata.setWordWrap(True)
         preview_layout.addWidget(self.idle_synopsis_metadata)
+        preview_body=QHBoxLayout()
+        preview_body.setSpacing(16)
+        self.idle_synopsis_image=QLabel()
+        self.idle_synopsis_image.setObjectName("idleSynopsisImage")
+        self.idle_synopsis_image.setFixedSize(132,190)
+        self.idle_synopsis_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.idle_synopsis_image.hide()
+        preview_body.addWidget(self.idle_synopsis_image,0,Qt.AlignmentFlag.AlignTop)
         self.idle_synopsis_text=QTextBrowser()
         self.idle_synopsis_text.setObjectName("idleSynopsisText")
         self.idle_synopsis_text.setReadOnly(True)
         self.idle_synopsis_text.setOpenExternalLinks(False)
-        preview_layout.addWidget(self.idle_synopsis_text,1)
+        preview_body.addWidget(self.idle_synopsis_text,1)
+        preview_layout.addLayout(preview_body,1)
         preview_note=QLabel("Dê dois cliques no conteúdo para reproduzir.")
         preview_note.setObjectName("idleSynopsisMeta")
         preview_layout.addWidget(preview_note)
@@ -2520,6 +2573,8 @@ class MainWindow(legacy.MainWindow):
         row = row if row is not None else getattr(self,"selected",None)
         kind = row.get("kind","") if isinstance(row,dict) else ""
         if kind not in ("movie","series","live","football","football_channel"):
+            self.idle_synopsis_image.setProperty("artworkUrl","")
+            self.idle_synopsis_image.hide()
             self.video_stage.setCurrentWidget(self.player_splash)
             self.video_title.setText("Escolha um conteúdo")
             return
@@ -2535,6 +2590,9 @@ class MainWindow(legacy.MainWindow):
             readable_kind + ("  ·  " + str(category) if category else ""))
         self.idle_synopsis_text.setPlainText(
             synopsis if synopsis else "Sinopse não disponível para este conteúdo.")
+        # Selecting another card cancels the previous preview association:
+        # late network responses cannot replace the new selection's artwork.
+        self.covers.enqueue_preview(self.idle_synopsis_image,pick_best_art(row),kind)
         self.video_title.setText(str(title))
         self.video_stage.setCurrentWidget(self.idle_synopsis)
 
