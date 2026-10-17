@@ -26,7 +26,11 @@ def test_recent_series_episode_resumes_instead_of_opening_series(tmp_path, monke
         window._open(item)
         assert played==[episode]
         assert window.mode=="home"
-        assert window.video_stage.count()==2
+        # The third stage is an intentionally added nonplaying synopsis.
+        assert window.video_stage.count()==3
+        assert window.video_stage.indexOf(window.player_splash)>=0
+        assert window.video_stage.indexOf(window.video)>=0
+        assert window.video_stage.indexOf(window.idle_synopsis)>=0
         assert window.video_stage.currentWidget() is window.player_splash
     finally:
         window.close()

@@ -84,3 +84,33 @@ def get_provider_series_posters(source: str) -> dict[str, str]:
             continue
         posters[normalized(title)] = cover
     return posters
+
+
+def get_provider_stream_artwork(source: str, kind: str) -> dict[str, str]:
+    """Get exact stream-ID artwork from the user's own Xtream provider.
+
+    No external art search, fuzzy title matching or shared credentials.
+    Large provider responses are skipped rather than exhausting memory.
+    """
+    if kind not in ("live", "movie"):
+        return {}
+    action = "get_live_streams" if kind == "live" else "get_vod_streams"
+    endpoint = provider_api_endpoint(source, action)
+    if not endpoint:
+        return {}
+    try:
+        rows = _read_small_json(endpoint, maximum=24 * 1024 * 1024)
+    except (requests.RequestException, ValueError, TypeError, UnicodeError):
+        return {}
+    if not isinstance(rows, list):
+        return {}
+    result = {}
+    for row in rows[:90_000]:
+        if not isinstance(row, dict):
+            continue
+        stream_id = row.get("stream_id")
+        image = row.get("stream_icon") or row.get("cover") or row.get("poster") or ""
+        if (str(stream_id).isascii() and str(stream_id).isdecimal()
+                and isinstance(image, str) and image.startswith(("http://", "https://"))):
+            result[str(stream_id)] = image
+    return result

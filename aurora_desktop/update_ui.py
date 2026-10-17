@@ -94,7 +94,9 @@ class UpdateController(QObject):
     def set_channel(self, channel):
         self.settings.setValue("updates/channel",channel)
         self.settings.remove("updates/last_check")
-        self.window.status.setText("Canal alterado. Use Atualizações para verificar novas versões.")
+        self.settings.remove("updates/last_attempt")
+        self.settings.remove("updates/last_successful_check")
+        self.window.status.setText("Canal alterado. Buscaremos versões desse canal.")
 
     def check(self, manual: bool = False):
         if self.checker is not None or self.downloader is not None:
@@ -103,14 +105,22 @@ class UpdateController(QObject):
             return
         now = datetime.now(timezone.utc)
         if not manual:
-            previous = self.settings.value("updates/last_check","")
-            try:
-                date = datetime.fromisoformat(previous)
-                if date.tzinfo and now - date < timedelta(hours=24):
-                    return
-            except (ValueError, TypeError):
-                pass
-        self.settings.setValue("updates/last_check",now.isoformat())
+            # The beta.14 implementation recorded a 24-hour success BEFORE
+            # querying GitHub. A release published minutes later was missed.
+            # Also ignore that legacy timestamp: it may represent a failed
+            # network request rather than a successful check.
+            for key, cooldown in (
+                ("updates/last_successful_check", timedelta(minutes=30)),
+                ("updates/last_attempt", timedelta(minutes=5)),
+            ):
+                previous = self.settings.value(key, "")
+                try:
+                    date = datetime.fromisoformat(previous)
+                    if date.tzinfo and now - date < cooldown:
+                        return
+                except (ValueError, TypeError):
+                    pass
+        self.settings.setValue("updates/last_attempt",now.isoformat())
         self._manual=manual
         worker=CheckWorker(self.settings.value("updates/channel","beta"),self)
         self.checker=worker
@@ -128,12 +138,18 @@ class UpdateController(QObject):
             worker.deleteLater()
 
     def _failed_check(self, message):
+        # A connection failure must not block automatic discovery for a day.
+        self.settings.remove("updates/last_successful_check")
         if self._manual:
             QMessageBox.warning(self.window,"AURORA IPTV · Atualizações",message)
         else:
             self.window.status.setText("Verificação de atualizações indisponível.")
 
     def _checked(self, release: Release | None):
+        # Mark success only after a complete response from GitHub. A newer
+        # release must still be checked on subsequent starts/30-minute ticks.
+        self.settings.setValue("updates/last_successful_check",
+                               datetime.now(timezone.utc).isoformat())
         if release is None:
             if self._manual:
                 QMessageBox.information(self.window,"AURORA IPTV · Atualizações",

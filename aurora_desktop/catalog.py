@@ -18,7 +18,8 @@ import requests
 
 from .core import ATTR, Library, playlist_lines, kind_of, episode_info, parse_extinf
 from .android_rules import normalized, movie_category, football_details, NON_FOOTBALL, NON_MATCH_PROGRAMMES
-from .provider import get_provider_category_kinds, get_provider_series_posters
+from .provider import get_provider_category_kinds, get_provider_series_posters, get_provider_stream_artwork
+from .artwork import xtream_stream_id
 
 GENRES = (
     ("Ação", r"\ba[cç][aã]o\b|\baction\b"),
@@ -253,6 +254,12 @@ class LibraryV2(Library):
                     PRIMARY KEY (playlist_id,normalized_title)
                 );
             """)
+            db.execute("""CREATE TABLE IF NOT EXISTS classification_overrides (
+                playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+                key TEXT NOT NULL, kind TEXT NOT NULL,
+                PRIMARY KEY(playlist_id,key),
+                CHECK(kind IN ('live','movie','series','uncategorized'))
+            )""")
             fcols = {r["name"] for r in db.execute("PRAGMA table_info(football_events)")}
             if "broadcast" not in fcols:
                 db.execute("ALTER TABLE football_events ADD COLUMN broadcast TEXT NOT NULL DEFAULT 'unknown'")
@@ -280,20 +287,67 @@ class LibraryV2(Library):
                 db.executemany("INSERT INTO provider_series_posters VALUES (?,?,?)",
                                [(playlist_id,name,cover) for name,cover in posters.items()])
         self.ensure_categories(playlist_id, force=True)
+        self._enrich_missing_artwork(playlist_id, location)
         if r and not r["epg_url"]:
             epg = epg_from_header(location)
             if epg:
                 self.set_epg_url(playlist_id, epg)
         return count
 
+    def _enrich_missing_artwork(self, playlist_id: int, location: str) -> None:
+        """Fill only missing TV/movie posters by Xtream stream ID.
+
+        Stored URLs, keys, progress, favorites, categories and playback are
+        never altered. Unrelated hosts and unsupported stream paths are skipped.
+        """
+        from urllib.parse import urlsplit
+        source_host = urlsplit(location).hostname
+        if not source_host:
+            return
+        with self.connect() as db:
+            missing = {r["kind"] for r in db.execute(
+                """SELECT DISTINCT kind FROM items WHERE playlist_id=?
+                    AND (logo='' OR logo IS NULL) AND kind IN ('live','movie')""",
+                (playlist_id,))}
+        for kind in ("live","movie"):
+            if kind not in missing:
+                continue
+            by_id = get_provider_stream_artwork(location,kind)
+            if not by_id:
+                continue
+            with self.connect() as db:
+                cursor = 0
+                while True:
+                    batch = db.execute(
+                        """SELECT rowid,url FROM items WHERE playlist_id=? AND kind=?
+                            AND (logo='' OR logo IS NULL) AND rowid>?
+                            ORDER BY rowid LIMIT 1200""",
+                        (playlist_id,kind,cursor)).fetchall()
+                    if not batch:
+                        break
+                    replacements=[]
+                    for record in batch:
+                        url = record["url"]
+                        if urlsplit(url).hostname != source_host:
+                            continue
+                        stream_id = xtream_stream_id(url,kind)
+                        image = by_id.get(stream_id,"")
+                        if image:
+                            replacements.append((image,record["rowid"]))
+                    if replacements:
+                        db.executemany("UPDATE items SET logo=? WHERE rowid=?",replacements)
+                    cursor=batch[-1]["rowid"]
+
     def ensure_categories(self, playlist_id: int, force: bool = False) -> None:
         """Reclassify a 0.1/0.2 catalog once, preserving URL-keyed favorites and progress."""
         with self.connect() as db:
             row = db.execute("SELECT version FROM classification_version WHERE playlist_id=?", (playlist_id,)).fetchone()
-            if row and row["version"] >= 5 and not force:
+            if row and row["version"] >= 6 and not force:
                 return
             provider_kinds = {r["normalized_name"]:r["kind"] for r in db.execute(
                 "SELECT normalized_name,kind FROM provider_category_kinds WHERE playlist_id=?", (playlist_id,))}
+            override_kinds = {r["key"]:r["kind"] for r in db.execute(
+                "SELECT key,kind FROM classification_overrides WHERE playlist_id=?",(playlist_id,))}
             cursor = 0
             while True:
                 batch = db.execute("""SELECT rowid,key,title,url,group_name,kind,logo,type_hint
@@ -304,15 +358,47 @@ class LibraryV2(Library):
                 updated = []
                 for item in batch:
                     title, group, logo = repair_legacy_title(item["title"], item["group_name"], item["logo"])
-                    kind = provider_kinds.get(normalized(group)) or kind_of(group, title, item["url"], item["type_hint"])
+                    kind = (override_kinds.get(item["key"])
+                            or (kind_of(group, title, item["url"], item["type_hint"])
+                                if item["type_hint"] else
+                                provider_kinds.get(normalized(group))
+                                or kind_of(group, title, item["url"], item["type_hint"])))
                     series, season, episode = episode_info(title) if kind == "series" else ("", None, None)
                     category = category_of(kind, title, group)
                     updated.append((title,group,logo,kind,category,series,season,episode,item["rowid"]))
                 db.executemany("""UPDATE items SET title=?,group_name=?,logo=?,kind=?,
                     category=?,series_name=?,season=?,episode=? WHERE rowid=?""",updated)
                 cursor = batch[-1]["rowid"]
-            db.execute("""INSERT INTO classification_version VALUES (?,5)
-                ON CONFLICT(playlist_id) DO UPDATE SET version=5""", (playlist_id,))
+            db.execute("""INSERT INTO classification_version VALUES (?,6)
+                ON CONFLICT(playlist_id) DO UPDATE SET version=6""", (playlist_id,))
+
+    def set_kind_override(self, playlist_id: int, item_key: str, kind: str | None) -> None:
+        """Persist a manual type correction across future playlist refreshes.
+
+        URL-backed primary keys remain unchanged: favorites, progress and
+        playback history stay valid. The original M3U file is untouched.
+        """
+        valid = ("live","movie","series","uncategorized")
+        if kind is not None and kind not in valid:
+            raise ValueError("Tipo de conteúdo inválido.")
+        with self.connect() as db:
+            row=db.execute("""SELECT title,group_name,url,type_hint FROM items
+                WHERE playlist_id=? AND key=?""",(playlist_id,item_key)).fetchone()
+            if row is None:
+                raise ValueError("Conteúdo não encontrado.")
+            if kind is None:
+                db.execute("DELETE FROM classification_overrides WHERE playlist_id=? AND key=?",
+                           (playlist_id,item_key))
+                kind=kind_of(row["group_name"],row["title"],row["url"],row["type_hint"])
+            else:
+                db.execute("""INSERT INTO classification_overrides(playlist_id,key,kind)
+                    VALUES (?,?,?) ON CONFLICT(playlist_id,key)
+                    DO UPDATE SET kind=excluded.kind""",(playlist_id,item_key,kind))
+            series,season,episode=episode_info(row["title"]) if kind=="series" else ("",None,None)
+            category=category_of(kind,row["title"],row["group_name"])
+            db.execute("""UPDATE items SET kind=?,category=?,series_name=?,season=?,episode=?
+                WHERE playlist_id=? AND key=?""",
+                (kind,category,series,season,episode,playlist_id,item_key))
 
     def categories(self, playlist_id: int, kind: str) -> list[dict]:
         with self.connect() as db:
@@ -336,7 +422,7 @@ class LibraryV2(Library):
         with self.connect() as db:
             if kind == "series":
                 sql = f"""SELECT series_name AS title,series_name, 'series' AS kind,
-                    MAX(logo) AS logo, MIN(key) AS key,COUNT(*) AS episodes,
+                    COALESCE(MAX(NULLIF(logo,'')),'') AS logo, MIN(key) AS key,COUNT(*) AS episodes,
                     MAX(NULLIF(synopsis,'')) AS synopsis,MIN(category) AS category
                     FROM items WHERE {condition}
                     GROUP BY series_name ORDER BY series_name COLLATE NOCASE LIMIT ? OFFSET ?"""
@@ -361,12 +447,19 @@ class LibraryV2(Library):
                 (playlist_id,f"%{search}%"))]
             for r in rows:
                 if r["kind"] == "series":
-                    item = db.execute("""SELECT MAX(logo) AS logo,series_name,COUNT(*) AS episodes FROM items
+                    item = db.execute("""SELECT COALESCE(MAX(NULLIF(logo,'')),'') AS logo,series_name,COUNT(*) AS episodes FROM items
                         WHERE playlist_id=? AND series_name=?""",(playlist_id,r["title"])).fetchone()
                 else:
                     item = db.execute("SELECT logo FROM items WHERE playlist_id=? AND key=?",
                         (playlist_id,r["key"][5:])).fetchone()
                 r["logo"] = item["logo"] if item else ""
+                if r["kind"] == "series":
+                    cover=db.execute(
+                        """SELECT cover FROM provider_series_posters
+                            WHERE playlist_id=? AND normalized_title=?""",
+                        (playlist_id,normalized(r["title"]))).fetchone()
+                    if cover and cover["cover"]:
+                        r["logo"] = cover["cover"]
             return rows
 
     def set_epg_url(self, playlist_id: int, url: str) -> None:

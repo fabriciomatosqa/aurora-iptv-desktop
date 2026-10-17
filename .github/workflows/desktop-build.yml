@@ -136,7 +136,7 @@ jobs:
           test -f release-assets/AURORA-IPTV-Desktop-linux-x86_64.tar.gz
           test -n "$(find release-assets -name 'aurora-iptv_*_amd64.deb' -print -quit)"
           (cd release-assets && sha256sum AURORA-IPTV-Desktop-Setup.exe AURORA-IPTV-Desktop-linux-x86_64.tar.gz aurora-iptv_*_amd64.deb > SHA256SUMS.txt)
-          if [[ "$VERSION" == *-beta.* || "$VERSION" == *-rc.* ]]; then
+          if [[ "$VERSION" == *-beta.* || "$VERSION" == *-rc.* || "$VERSION" =~ -[0-9]{6}\.[0-9]{2}$ ]]; then
             gh release create "$TAG" release-assets/* \
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
               --title "AURORA IPTV Desktop $VERSION (teste)" \

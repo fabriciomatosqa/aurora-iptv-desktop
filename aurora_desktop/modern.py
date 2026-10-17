@@ -11,7 +11,7 @@ import sys
 from PySide6.QtCore import Qt, QSize, QRectF, QPoint, QEvent, QTimer, QUrl, Signal, QObject, QThread, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QBrush, QColor, QFont, QGradient, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QKeySequence, QShortcut
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QMediaMetaData
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
@@ -24,6 +24,9 @@ from .catalog import LibraryV2, guess_xtream_epg
 from .svg_icons import svg_icon_for
 from .sports_data import fetch_score_updates, fixture_key, national_artwork
 from .football_widgets import BadgeLoader, FootballCardWidget
+from .pip_window import PiPWindow
+from .artwork import pick_best_art, valid_artwork, image_cache_file
+from .core import data_directory
 
 # The original Qt player keeps the same settings, DB path, resuming and playlist management.
 legacy.Library = LibraryV2
@@ -140,20 +143,46 @@ class AuroraBanner(QFrame):
         p.setClipPath(clip)
         p.fillRect(self.rect(), QColor("#09253a"))
         if not self._image.isNull():
-            # KeepAspectRatioByExpanding, but crop from the source directly:
-            # this avoids the old distorted drawPixmap source rectangle.
+            # Fit the *whole* source vertically. Widening a window must never
+            # crop the sky/mountains or zoom the source simply to fill its width.
             img_w, img_h = self._image.width(), self._image.height()
-            source_aspect = img_w / img_h
-            target_aspect = w / h
-            if source_aspect > target_aspect:
-                crop_width = img_h * target_aspect
-                left = (img_w - crop_width) / 2
-                source = QRectF(left, 0, crop_width, img_h)
+            fitted_w = img_w * h / img_h
+            left = (w - fitted_w) / 2
+            source = QRectF(0, 0, img_w, img_h)
+            if fitted_w >= w:
+                # Narrower windows can still display the whole image with
+                # slight empty margins filled by the existing aurora backdrop.
+                target_w = w
+                target_h = img_h * w / img_w
+                top = (h - target_h) / 2
+                p.drawPixmap(QRectF(0, top, target_w, target_h), self._image, source)
             else:
-                crop_height = img_w / target_aspect
-                top = (img_h - crop_height) * 0.48
-                source = QRectF(0, top, img_w, crop_height)
-            p.drawPixmap(frame, self._image, source)
+                # Mirror each end of the *same* image at the same scale.
+                # Reflection avoids seams and panoramic zoom on 21:9/32:9.
+                p.drawPixmap(QRectF(left, 0, fitted_w, h), self._image, source)
+                edge_left = left
+                edge_right = left + fitted_w
+                for index in range(1, 9):
+                    if edge_left <= 0 and edge_right >= w:
+                        break
+                    left_tile = QRectF(edge_left - fitted_w, 0, fitted_w, h)
+                    right_tile = QRectF(edge_right, 0, fitted_w, h)
+                    if index % 2:
+                        p.save()
+                        p.translate(edge_left, 0)
+                        p.scale(-1, 1)
+                        p.drawPixmap(QRectF(0, 0, fitted_w, h), self._image, source)
+                        p.restore()
+                        p.save()
+                        p.translate(edge_right, 0)
+                        p.scale(-1, 1)
+                        p.drawPixmap(QRectF(-fitted_w, 0, fitted_w, h), self._image, source)
+                        p.restore()
+                    else:
+                        p.drawPixmap(left_tile, self._image, source)
+                        p.drawPixmap(right_tile, self._image, source)
+                    edge_left -= fitted_w
+                    edge_right += fitted_w
         else:
             backdrop = QLinearGradient(0, 0, w, h)
             backdrop.setColorAt(0, QColor("#0b293e"))
@@ -266,93 +295,243 @@ class FootballLiveDelegate(QStyledItemDelegate):
 
 
 class Covers(QObject):
-    """Small bounded asynchronous cover cache; Qt requests never block the GUI."""
+    """Lazy card artwork with bounded RAM, network and persistent disk cache.
+
+    The cache stores images by a hash of their complete URL, so provider
+    passwords are never exposed in filenames. Qt GUI work remains nonblocking.
+    """
+    MAX_IMAGE_BYTES=3*1024*1024
+    MAX_DISK_BYTES=128*1024*1024
+
     def __init__(self, list_widget: QListWidget):
         super().__init__(list_widget)
         self.widget = list_widget
         self.network = QNetworkAccessManager(self)
         self.queue = deque()
+        self.waiting = {}
         self.active = 0
         self.cache = {}
-        self.failed = set()
+        self.failed = {}
         self.generation = 0
-        self.max_items = 250
+        self.max_items = 200
+        self.download_count = 0
+        self.disk_dir = data_directory() / "image_cache"
+        self.disk_dir.mkdir(parents=True, exist_ok=True)
         self.blanks = {kind:self.placeholder(kind) for kind in
                        ("movie","series","live","football")}
 
     def placeholder(self, kind: str = "movie"):
-        """A designed artwork tile rather than a generic diamond glyph."""
         kind = {
             "live": "live", "football_channel": "live", "football": "football",
             "series": "series", "movie": "movie",
         }.get(kind, "movie")
-        pixmap = QPixmap(84, 104)
+        pixmap = QPixmap(70, 88)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        gradient = QLinearGradient(0, 0, 84, 104)
+        gradient = QLinearGradient(0, 0, 70, 88)
         gradient.setColorAt(0, QColor("#1a4a66"))
         gradient.setColorAt(.52, QColor("#234167"))
         gradient.setColorAt(1, QColor("#302354"))
         painter.setPen(QColor("#386c7c"))
         painter.setBrush(QBrush(gradient))
-        painter.drawRoundedRect(1, 1, 82, 102, 11, 11)
-        symbol = svg_icon_for(kind, 45).pixmap(QSize(45, 45))
-        painter.drawPixmap((84-symbol.width())//2, (104-symbol.height())//2, symbol)
+        painter.drawRoundedRect(1, 1, 68, 86, 10, 10)
+        symbol = svg_icon_for(kind, 39).pixmap(QSize(39, 39))
+        painter.drawPixmap((70-symbol.width())//2, (88-symbol.height())//2, symbol)
         painter.end()
         return QIcon(pixmap)
+
+    @staticmethod
+    def image_icon(source: QPixmap, kind: str):
+        """Movie/series artwork fills the poster; TV logos retain proportions."""
+        tile=QPixmap(70,88)
+        tile.fill(Qt.GlobalColor.transparent)
+        painter=QPainter(tile)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        shape=QPainterPath()
+        shape.addRoundedRect(QRectF(0,0,70,88),9,9)
+        painter.setClipPath(shape)
+        painter.fillRect(QRectF(0,0,70,88),QColor("#16364c"))
+        if kind in ("live","football_channel"):
+            rendered=source.scaled(QSize(64,76),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
+            painter.drawPixmap((70-rendered.width())//2,
+                               (88-rendered.height())//2,rendered)
+        else:
+            rendered=source.scaled(QSize(70,88),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation)
+            painter.drawPixmap((70-rendered.width())//2,
+                               (88-rendered.height())//2,rendered)
+        painter.end()
+        return QIcon(tile)
 
     def reset(self):
         self.generation += 1
         self.queue.clear()
+        self.waiting.clear()
+
+    def _icon_for(self, url, kind, source):
+        key=(url,kind)
+        if key not in self.cache:
+            self.cache[key]=self.image_icon(source,kind)
+            if len(self.cache)>self.max_items:
+                self.cache.pop(next(iter(self.cache)))
+        return self.cache[key]
 
     def enqueue(self, item, url, kind: str = "movie"):
         category = "live" if kind == "football_channel" else kind
-        item.setIcon(self.blanks.get(category, self.blanks["movie"]))
-        if not url or not url.startswith(("https://","http://")):
+        item.setIcon(self.blanks.get(category,self.blanks["movie"]))
+        url=valid_artwork(url)
+        if not url:
             return
-        if url in self.cache:
-            item.setIcon(self.cache[url])
-        elif url not in self.failed and len(self.queue) < 500:
-            self.queue.append((item,url,self.generation))
+        icon=self.cache.get((url,category))
+        if icon is not None:
+            item.setIcon(icon)
+            return
+        local=""
+        if url.startswith("file://"):
+            local=QUrl(url).toLocalFile()
+        elif Path(url).is_absolute():
+            local=url
+        if local:
+            image=QPixmap(local)
+            if not image.isNull():
+                item.setIcon(self._icon_for(url,category,image))
+            return
+        path=image_cache_file(self.disk_dir,url)
+        if path.is_file():
+            try:
+                # 30 days; expired covers are refreshed after provider changes.
+                if time.time()-path.stat().st_mtime < 30*86400:
+                    image=QPixmap()
+                    # Cached files are SHA-named .img blobs. Load by image
+                    # magic bytes, never by the nonstandard file extension.
+                    if image.loadFromData(path.read_bytes()) and not image.isNull():
+                        item.setIcon(self._icon_for(url,category,image))
+                        return
+            except OSError:
+                pass
+        if self.failed.get(url,0)>time.monotonic():
+            return
+        key=(self.generation,url)
+        if key in self.waiting:
+            self.waiting[key].append((item,category))
+        elif len(self.queue)<500:
+            self.waiting[key]=[(item,category)]
+            self.queue.append(key)
+            self._dispatch()
+
+    @staticmethod
+    def _show_preview(label: QLabel, url: str, image: QPixmap):
+        if label.property("artworkUrl") != url or image.isNull():
+            return
+        label.setPixmap(image.scaled(label.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation))
+        label.show()
+
+    def enqueue_preview(self, label: QLabel, url: str, kind: str = "movie"):
+        """Reuse the same network pipeline for the right-side synopsis poster."""
+        url=valid_artwork(url)
+        label.setProperty("artworkUrl",url)
+        label.clear()
+        label.hide()
+        if not url:
+            return
+        local=QUrl(url).toLocalFile() if url.startswith("file://") else (
+            url if Path(url).is_absolute() else "")
+        if local:
+            self._show_preview(label,url,QPixmap(local))
+            return
+        cached=image_cache_file(self.disk_dir,url)
+        if cached.is_file():
+            try:
+                if time.time()-cached.stat().st_mtime<30*86400:
+                    image=QPixmap()
+                    if image.loadFromData(cached.read_bytes()):
+                        self._show_preview(label,url,image)
+                        return
+            except OSError:
+                pass
+        if self.failed.get(url,0)>time.monotonic():
+            return
+        key=(self.generation,url)
+        if key in self.waiting:
+            self.waiting[key].append((label,kind))
+        elif len(self.queue)<500:
+            self.waiting[key]=[(label,kind)]
+            self.queue.append(key)
             self._dispatch()
 
     def _dispatch(self):
-        while self.active < 5 and self.queue:
-            item,url,generation = self.queue.popleft()
-            if generation != self.generation:
+        while self.active<5 and self.queue:
+            generation,url=self.queue.popleft()
+            key=(generation,url)
+            if generation!=self.generation or key not in self.waiting:
                 continue
-            req = QNetworkRequest(QUrl(url))
-            req.setTransferTimeout(9_000)
-            self.active += 1
-            reply = self.network.get(req)
-            reply.finished.connect(lambda r=reply,it=item,u=url,g=generation:self._done(r,it,u,g))
+            request=QNetworkRequest(QUrl(url))
+            request.setTransferTimeout(9000)
+            request.setRawHeader(b"User-Agent",
+                                 b"Mozilla/5.0 (compatible; AuroraIPTVDesktop/0.6)")
+            request.setRawHeader(b"Accept",
+                                 b"image/png,image/jpeg,image/webp,image/*;q=0.8")
+            self.active+=1
+            reply=self.network.get(request)
+            reply.downloadProgress.connect(
+                lambda downloaded,total,r=reply: r.abort()
+                if downloaded>self.MAX_IMAGE_BYTES else None)
+            reply.finished.connect(
+                lambda r=reply,k=key: self._done(r,k))
 
-    def _done(self, reply, item, url, generation):
-        self.active -= 1
+    def _done(self, reply, key):
+        self.active-=1
+        generation,url=key
         try:
-            data = bytes(reply.readAll())
-            if reply.error() or len(data) > 2_000_000:
-                self.failed.add(url)
-            else:
-                pixmap = QPixmap()
-                if pixmap.loadFromData(data) and not pixmap.isNull():
-                    scaled = pixmap.scaled(QSize(72,86),Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
-                    icon = QIcon(scaled)
-                    self.cache[url] = icon
-                    if len(self.cache) > self.max_items:
-                        self.cache.pop(next(iter(self.cache)))
-                    if generation == self.generation:
-                        try:
-                            if item.listWidget() is self.widget:
-                                item.setIcon(icon)
-                        except RuntimeError:
-                            pass
-                else:
-                    self.failed.add(url)
+            data=bytes(reply.readAll())
+            pixmap=QPixmap()
+            if (reply.error() or not data or len(data)>self.MAX_IMAGE_BYTES
+                    or not pixmap.loadFromData(data)):
+                self.failed[url]=time.monotonic()+600
+                return
+            # Persist the original bytes atomically. URLs (and credentials)
+            # are stored only as hashes; no playlist contents are written.
+            path=image_cache_file(self.disk_dir,url)
+            try:
+                temporary=path.with_suffix(".tmp")
+                temporary.write_bytes(data)
+                temporary.replace(path)
+                self.download_count+=1
+                if self.download_count%60==0:
+                    self._prune_disk_cache()
+            except OSError:
+                pass
+            if generation==self.generation:
+                for item,kind in self.waiting.get(key,[]):
+                    try:
+                        if isinstance(item,QLabel):
+                            self._show_preview(item,url,pixmap)
+                        elif item.listWidget() is self.widget:
+                            item.setIcon(self._icon_for(url,kind,pixmap))
+                    except RuntimeError:
+                        pass
         finally:
+            self.waiting.pop(key,None)
             reply.deleteLater()
             self._dispatch()
+
+    def _prune_disk_cache(self):
+        try:
+            entries=[p for p in self.disk_dir.glob("*.img") if p.is_file()]
+            entries.sort(key=lambda p:p.stat().st_mtime,reverse=True)
+            total=0
+            for path in entries:
+                total+=path.stat().st_size
+                if total>self.MAX_DISK_BYTES:
+                    path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 class GuideWorker(QObject):
@@ -444,10 +623,25 @@ class MainWindow(legacy.MainWindow):
             side.addWidget(button)
         side.addStretch()
         from . import __version__
-        footer = QLabel(f"DESKTOP  /  v{__version__}")
+        footer_row=QWidget(sidebar)
+        footer_row.setObjectName("footerRow")
+        footer_layout=QHBoxLayout(footer_row)
+        footer_layout.setContentsMargins(0,7,0,0)
+        footer_layout.setSpacing(4)
+        footer = QLabel(f"DESKTOP / v{__version__}")
         footer.setObjectName("versionFooter")
         footer.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        side.addWidget(footer)
+        footer_layout.addWidget(footer,1)
+        self.footer_update_button=QPushButton()
+        self.footer_update_button.setObjectName("footerUpdateButton")
+        self.footer_update_button.setFixedSize(28,28)
+        self.footer_update_button.setIcon(svg_icon_for("refresh",18))
+        self.footer_update_button.setIconSize(QSize(18,18))
+        self.footer_update_button.setToolTip("Verificar novas versões do AURORA IPTV agora")
+        self.footer_update_button.setAccessibleName("Verificar atualizações")
+        self.footer_update_button.clicked.connect(self._check_updates_now)
+        footer_layout.addWidget(self.footer_update_button)
+        side.addWidget(footer_row)
         base.addWidget(sidebar)
         self.sidebar = sidebar
 
@@ -558,6 +752,11 @@ class MainWindow(legacy.MainWindow):
         refresh_button.setIcon(svg_icon_for("refresh"))
         refresh_button.clicked.connect(self._import_active)
         manage_buttons.addWidget(refresh_button)
+        review_button=QPushButton("Revisar conteúdos não classificados")
+        review_button.setIcon(svg_icon_for("manage"))
+        review_button.setToolTip("Corrigir manualmente o tipo de itens sem metadados suficientes")
+        review_button.clicked.connect(lambda:self.navigate("uncategorized"))
+        manage_buttons.addWidget(review_button)
         playlist_layout.addLayout(manage_buttons)
         content_layout.addWidget(self.playlist_settings)
 
@@ -746,6 +945,40 @@ class MainWindow(legacy.MainWindow):
         self.video_stage.setObjectName("videoStage")
         self.video_stage.addWidget(self.player_splash)
         self.video_stage.addWidget(self.video)
+        self.idle_synopsis=QWidget()
+        self.idle_synopsis.setObjectName("idleSynopsis")
+        preview_layout=QVBoxLayout(self.idle_synopsis)
+        preview_layout.setContentsMargins(27,28,27,24)
+        preview_layout.setSpacing(12)
+        preview_label=QLabel("SINOPSE DO CONTEÚDO SELECIONADO")
+        preview_label.setObjectName("idleSynopsisLabel")
+        preview_layout.addWidget(preview_label)
+        self.idle_synopsis_title=QLabel("")
+        self.idle_synopsis_title.setObjectName("idleSynopsisTitle")
+        self.idle_synopsis_title.setWordWrap(True)
+        preview_layout.addWidget(self.idle_synopsis_title)
+        self.idle_synopsis_metadata=QLabel("")
+        self.idle_synopsis_metadata.setObjectName("idleSynopsisMeta")
+        self.idle_synopsis_metadata.setWordWrap(True)
+        preview_layout.addWidget(self.idle_synopsis_metadata)
+        preview_body=QHBoxLayout()
+        preview_body.setSpacing(16)
+        self.idle_synopsis_image=QLabel()
+        self.idle_synopsis_image.setObjectName("idleSynopsisImage")
+        self.idle_synopsis_image.setFixedSize(132,190)
+        self.idle_synopsis_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.idle_synopsis_image.hide()
+        preview_body.addWidget(self.idle_synopsis_image,0,Qt.AlignmentFlag.AlignTop)
+        self.idle_synopsis_text=QTextBrowser()
+        self.idle_synopsis_text.setObjectName("idleSynopsisText")
+        self.idle_synopsis_text.setReadOnly(True)
+        self.idle_synopsis_text.setOpenExternalLinks(False)
+        preview_body.addWidget(self.idle_synopsis_text,1)
+        preview_layout.addLayout(preview_body,1)
+        preview_note=QLabel("Dê dois cliques no conteúdo para reproduzir.")
+        preview_note.setObjectName("idleSynopsisMeta")
+        preview_layout.addWidget(preview_note)
+        self.video_stage.addWidget(self.idle_synopsis)
         self.video_stage.setCurrentWidget(self.player_splash)
         play_layout.addWidget(self.video_stage,1)
         self.player = QMediaPlayer(self)
@@ -793,6 +1026,29 @@ class MainWindow(legacy.MainWindow):
         self.fullscreen_button.clicked.connect(self._toggle_video_fullscreen)
         self.fullscreen_button.setToolTip("Tela cheia (F11) · sair com Esc")
         actions.addWidget(self.fullscreen_button)
+        self.pip_button=QPushButton()
+        self.pip_button.setIcon(svg_icon_for("pip",20))
+        self.pip_button.setFixedSize(38,38)
+        self.pip_button.setAccessibleName("Picture-in-Picture")
+        self.pip_button.setToolTip("Picture-in-Picture: assistir enquanto utiliza outros programas")
+        self.pip_button.clicked.connect(self._enter_pip)
+        actions.addWidget(self.pip_button)
+        self.aspect_button=QPushButton()
+        self.aspect_button.setIcon(svg_icon_for("aspect",20))
+        self.aspect_button.setFixedSize(38,38)
+        self.aspect_button.setAccessibleName("Proporção da imagem")
+        self.aspect_button.setToolTip("Ajustar, preencher ou esticar a imagem")
+        self.aspect_menu=QMenu(self.aspect_button)
+        for label,mode in (
+            ("Ajustar à tela (sem cortes)","fit"),
+            ("Preencher tela (pode cortar)","fill"),
+            ("Esticar (pode distorcer)","stretch"),
+        ):
+            action=self.aspect_menu.addAction(label)
+            action.setCheckable(True)
+            action.triggered.connect(lambda checked=False,m=mode:self._set_aspect_mode(m))
+        self.aspect_button.setMenu(self.aspect_menu)
+        actions.addWidget(self.aspect_button)
         self.volume_button=QPushButton()
         self.volume_button.setObjectName("volumeButton")
         self.volume_button.setIcon(svg_icon_for("volume",22))
@@ -803,7 +1059,7 @@ class MainWindow(legacy.MainWindow):
         self.volume_slider=AuroraSeekSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setRange(0,100)
         self.volume_slider.setValue(75)
-        self.volume_slider.setMaximumWidth(125)
+        self.volume_slider.setMaximumWidth(98)
         self.volume_slider.valueChanged.connect(lambda v:self.audio.setVolume(v/100))
         actions.addWidget(self.volume_slider)
         play_layout.addWidget(self.player_actions)
@@ -826,7 +1082,57 @@ class MainWindow(legacy.MainWindow):
         self.fs_top_exit.setIcon(svg_icon_for("exit-fullscreen",20))
         self.fs_top_exit.clicked.connect(self._leave_video_fullscreen)
         top_row.addWidget(self.fs_top_exit)
+        self.fs_back_button=QPushButton("Voltar")
+        self.fs_back_button.setIcon(svg_icon_for("back",20))
+        self.fs_back_button.clicked.connect(self._fullscreen_go_back)
+        top_row.addWidget(self.fs_back_button)
+        self.fs_close_button=QPushButton("Fechar vídeo")
+        self.fs_close_button.setIcon(svg_icon_for("close",20))
+        self.fs_close_button.clicked.connect(self._close_video)
+        top_row.addWidget(self.fs_close_button)
+        self.fs_pip=QPushButton("PiP")
+        self.fs_pip.setIcon(svg_icon_for("pip",20))
+        self.fs_pip.clicked.connect(self._enter_pip)
+        top_row.addWidget(self.fs_pip)
+        self.fs_aspect=QPushButton("Proporção")
+        self.fs_aspect.setIcon(svg_icon_for("aspect",20))
+        self.fs_aspect_menu=QMenu(self.fs_aspect)
+        for label,mode in (
+            ("Ajustar à tela (sem cortes)","fit"),
+            ("Preencher tela (pode cortar)","fill"),
+            ("Esticar (pode distorcer)","stretch"),
+        ):
+            action=self.fs_aspect_menu.addAction(label)
+            action.setCheckable(True)
+            action.triggered.connect(lambda checked=False,m=mode:self._set_aspect_mode(m))
+        self.fs_aspect.setMenu(self.fs_aspect_menu)
+        top_row.addWidget(self.fs_aspect)
         hud.addLayout(top_row)
+        hud.addStretch(1)
+        center_row=QHBoxLayout()
+        center_row.addStretch(1)
+        self.fs_rewind=QPushButton("−10 s")
+        self.fs_rewind.setIcon(svg_icon_for("rewind",25))
+        self.fs_rewind.clicked.connect(lambda:self._seek_relative(-10000))
+        center_row.addWidget(self.fs_rewind)
+        self.fs_center_play=QPushButton("Reproduzir")
+        self.fs_center_play.setIcon(svg_icon_for("play",38))
+        self.fs_center_play.setIconSize(QSize(38,38))
+        self.fs_center_play.setMinimumSize(74,68)
+        self.fs_center_play.clicked.connect(self._toggle_play)
+        center_row.addWidget(self.fs_center_play)
+        self.fs_forward=QPushButton("+10 s")
+        self.fs_forward.setIcon(svg_icon_for("forward",25))
+        self.fs_forward.clicked.connect(lambda:self._seek_relative(10000))
+        center_row.addWidget(self.fs_forward)
+        center_row.addStretch(1)
+        hud.addLayout(center_row)
+        self.fs_loading=QProgressBar(self.fs_overlay)
+        self.fs_loading.setRange(0,0)
+        self.fs_loading.setMaximumHeight(5)
+        self.fs_loading.setTextVisible(False)
+        self.fs_loading.hide()
+        hud.addWidget(self.fs_loading)
         hud.addStretch(1)
 
         self.fs_bottom=QFrame(self.fs_overlay)
@@ -870,6 +1176,25 @@ class MainWindow(legacy.MainWindow):
         self.fs_volume.valueChanged.connect(self.volume_slider.setValue)
         self.volume_slider.valueChanged.connect(self.fs_volume.setValue)
         buttons.addWidget(self.fs_volume)
+        self.audio_tracks_button=QPushButton("Áudio")
+        self.audio_tracks_button.setIcon(svg_icon_for("volume",20))
+        self.audio_tracks_menu=QMenu(self.audio_tracks_button)
+        self.audio_tracks_menu.aboutToShow.connect(self._populate_audio_tracks)
+        self.audio_tracks_button.setMenu(self.audio_tracks_menu)
+        buttons.addWidget(self.audio_tracks_button)
+        self.subtitle_button=QPushButton("Legendas")
+        self.subtitle_button.setIcon(svg_icon_for("subtitle",20))
+        self.subtitle_menu=QMenu(self.subtitle_button)
+        self.subtitle_menu.aboutToShow.connect(self._populate_subtitle_tracks)
+        self.subtitle_button.setMenu(self.subtitle_menu)
+        buttons.addWidget(self.subtitle_button)
+        self.speed_button=QPushButton("1×")
+        self.speed_menu=QMenu(self.speed_button)
+        for speed in (.5,.75,1.0,1.25,1.5,2.0):
+            action=self.speed_menu.addAction(f"{speed:g}×")
+            action.triggered.connect(lambda checked=False,v=speed:self._set_speed(v))
+        self.speed_button.setMenu(self.speed_menu)
+        buttons.addWidget(self.speed_button)
         self.fs_exit=QPushButton("Sair da tela cheia")
         self.fs_exit.setIcon(svg_icon_for("exit-fullscreen",20))
         self.fs_exit.clicked.connect(self._leave_video_fullscreen)
@@ -897,6 +1222,11 @@ class MainWindow(legacy.MainWindow):
         self.player.positionChanged.connect(self._sync_fullscreen_position)
         self.player.durationChanged.connect(self._sync_fullscreen_duration)
         self.player.playbackStateChanged.connect(self._sync_play_icons)
+        self.player.durationChanged.connect(self._sync_stream_capabilities)
+        self.player.seekableChanged.connect(self._sync_stream_capabilities)
+        self.player.mediaStatusChanged.connect(self._sync_stream_capabilities)
+        self.player.tracksChanged.connect(self._sync_stream_capabilities)
+        self.player.playbackStateChanged.connect(self._sync_pip_controls)
         self.status = QLabel("Selecione sua playlist para começar.")
         self.status.setObjectName("statusInfo")
         self.status.setWordWrap(True)
@@ -908,12 +1238,25 @@ class MainWindow(legacy.MainWindow):
         panels.setSizes([260,455,725])
         base.addWidget(shell,1)
 
-        QShortcut(QKeySequence("Space"),self.video,self._toggle_play)
+        self._keyboard_shortcuts=[]
+        for sequence,callback in (
+            ("Space",self._shortcut_play),("F",self._shortcut_fullscreen),
+            ("M",self._shortcut_mute),("Up",lambda:self._shortcut_volume(5)),
+            ("Down",lambda:self._shortcut_volume(-5)),
+            ("Left",lambda:self._shortcut_seek(-10000)),
+            ("Right",lambda:self._shortcut_seek(10000)),
+        ):
+            shortcut=QShortcut(QKeySequence(sequence),self)
+            shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            shortcut.activated.connect(callback)
+            self._keyboard_shortcuts.append(shortcut)
         self.exit_fullscreen_shortcut = QShortcut(QKeySequence("Escape"),self,self._leave_video_fullscreen)
         self.exit_fullscreen_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.enter_fullscreen_shortcut = QShortcut(QKeySequence("F11"),self,self._toggle_video_fullscreen)
         self.enter_fullscreen_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._video_fullscreen = False
+        self._pip_window = None
+        self._aspect_mode = self.settings.value("playback/aspect","fit")
         self._fullscreen_was_maximized = False
         self._saved_panel_sizes = None
         self._saved_minimum_size = None
@@ -950,6 +1293,7 @@ class MainWindow(legacy.MainWindow):
         self._live_badge_timer.start()
         self.setMinimumSize(1150,680)
         self.resize(1580,900)
+        self._apply_aspect_mode()
 
     def eventFilter(self, obj, event):
         if getattr(self, "_video_fullscreen", False):
@@ -981,7 +1325,15 @@ class MainWindow(legacy.MainWindow):
     def _begin_fullscreen_fade(self):
         if not self._video_fullscreen:
             return
-        if self.fs_seek.isSliderDown() or self.fs_volume.isSliderDown():
+        if (self.fs_seek.isSliderDown() or self.fs_volume.isSliderDown()
+                or self.fs_bottom.underMouse()
+                or self.fs_center_play.underMouse()
+                or self.fs_top_exit.underMouse()
+                or self.fs_back_button.underMouse()):
+            self._fs_idle.start(3000)
+            return
+        if any(menu.isVisible() for menu in (
+                self.aspect_menu,self.fs_aspect_menu,self.audio_tracks_menu,self.subtitle_menu,self.speed_menu)):
             self._fs_idle.start(3000)
             return
         self._fs_fade.stop()
@@ -1002,6 +1354,8 @@ class MainWindow(legacy.MainWindow):
         self.play.setIcon(svg_icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
         self.fs_play.setText(caption)
         self.fs_play.setIcon(svg_icon_for(icon,24,light=not getattr(self,"_theme_dark",True)))
+        self.fs_center_play.setIcon(svg_icon_for(icon,38))
+        self.fs_center_play.setToolTip(caption)
 
     def _sync_fullscreen_duration(self,duration):
         self.fs_seek.setRange(0,max(0,duration))
@@ -1012,6 +1366,177 @@ class MainWindow(legacy.MainWindow):
             self.fs_seek.setValue(position)
         self.fs_time.setText(legacy.clock(position)+" / "+legacy.clock(self.player.duration()))
 
+    def _fullscreen_go_back(self):
+        self._leave_video_fullscreen()
+        self._go_back()
+
+    def _close_video(self):
+        self._save_progress()
+        if self._video_fullscreen:
+            self._leave_video_fullscreen()
+        if self._pip_window is not None:
+            self._exit_pip()
+        self.player.stop()
+        self.playing=None
+        # Preserve the selected catalogue row so its synopsis becomes visible.
+        self.video_stage.setCurrentWidget(self.player_splash)
+        self._update_idle_synopsis()
+        self.status.setText("Player fechado. Escolha outro conteúdo.")
+        self._sync_stream_capabilities()
+
+    def _stream_seekable(self):
+        row=self.playing or {}
+        return (row.get("kind") not in ("live","football","football_channel")
+                and self.player.isSeekable() and self.player.duration()>0)
+
+    def _seek_relative(self, delta):
+        if self._stream_seekable():
+            self.player.setPosition(max(0,min(self.player.duration(),
+                                              self.player.position()+delta)))
+
+    def _sync_stream_capabilities(self,*args):
+        if not hasattr(self,"fs_rewind"):
+            return
+        supported=self._stream_seekable()
+        for widget in (self.seek,self.fs_seek,self.fs_rewind,self.fs_forward):
+            widget.setEnabled(supported)
+        self.speed_button.setEnabled(supported)
+        self.audio_tracks_button.setEnabled(bool(self.player.audioTracks()))
+        self.subtitle_button.setEnabled(bool(self.player.subtitleTracks()))
+        if hasattr(self,"fs_loading"):
+            self.fs_loading.setVisible(
+                bool(self._video_fullscreen) and self.player.mediaStatus() in (
+                    QMediaPlayer.MediaStatus.LoadingMedia,
+                    QMediaPlayer.MediaStatus.BufferingMedia,
+                    QMediaPlayer.MediaStatus.StalledMedia))
+
+    def _populate_audio_tracks(self):
+        self.audio_tracks_menu.clear()
+        for i,metadata in enumerate(self.player.audioTracks()):
+            language=metadata.value(QMediaMetaData.Key.Language)
+            label=str(language.name) if hasattr(language,"name") else str(language or "")
+            action=self.audio_tracks_menu.addAction(label or f"Faixa {i+1}")
+            action.setCheckable(True)
+            action.setChecked(i==self.player.activeAudioTrack())
+            action.triggered.connect(lambda checked=False,index=i:
+                                     self.player.setActiveAudioTrack(index))
+
+    def _populate_subtitle_tracks(self):
+        self.subtitle_menu.clear()
+        action=self.subtitle_menu.addAction("Desativadas")
+        action.setCheckable(True)
+        action.setChecked(self.player.activeSubtitleTrack()<0)
+        action.triggered.connect(lambda checked=False:
+                                 self.player.setActiveSubtitleTrack(-1))
+        for i,metadata in enumerate(self.player.subtitleTracks()):
+            language=metadata.value(QMediaMetaData.Key.Language)
+            label=str(language.name) if hasattr(language,"name") else str(language or "")
+            action=self.subtitle_menu.addAction(label or f"Legenda {i+1}")
+            action.setCheckable(True)
+            action.setChecked(i==self.player.activeSubtitleTrack())
+            action.triggered.connect(lambda checked=False,index=i:
+                                     self.player.setActiveSubtitleTrack(index))
+
+    def _set_speed(self,value):
+        if self._stream_seekable():
+            self.player.setPlaybackRate(value)
+            self.speed_button.setText(f"{value:g}×")
+
+    def _set_aspect_mode(self,mode):
+        if mode not in ("fit","fill","stretch"):
+            return
+        self._aspect_mode=mode
+        self.settings.setValue("playback/aspect",mode)
+        self._apply_aspect_mode()
+
+    def _apply_aspect_mode(self):
+        mode=getattr(self,"_aspect_mode","fit")
+        qtmode={
+            "fit":Qt.AspectRatioMode.KeepAspectRatio,
+            "fill":Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            "stretch":Qt.AspectRatioMode.IgnoreAspectRatio,
+        }[mode if mode in ("fit","fill","stretch") else "fit"]
+        self.video.setAspectRatioMode(qtmode)
+        if self._pip_window is not None:
+            self._pip_window.video.setAspectRatioMode(qtmode)
+        for action in self.aspect_menu.actions()+self.fs_aspect_menu.actions():
+            action.setChecked(
+                (mode == "fit" and action.text().startswith("Ajustar"))
+                or (mode == "fill" and action.text().startswith("Preencher"))
+                or (mode == "stretch" and action.text().startswith("Esticar")))
+
+    def _focus_is_text(self):
+        return isinstance(QApplication.focusWidget(),(QLineEdit,QComboBox,QTextBrowser))
+
+    def _shortcut_play(self):
+        if self.playing and not self._focus_is_text():
+            self._toggle_play()
+
+    def _shortcut_fullscreen(self):
+        if self.playing and not self._focus_is_text():
+            self._toggle_video_fullscreen()
+
+    def _shortcut_mute(self):
+        if self.playing and not self._focus_is_text():
+            self._toggle_mute()
+
+    def _shortcut_volume(self,change):
+        if self.playing and not self._focus_is_text():
+            self.volume_slider.setValue(max(0,min(100,self.volume_slider.value()+change)))
+
+    def _shortcut_seek(self,delta):
+        if self.playing and not self._focus_is_text():
+            self._seek_relative(delta)
+
+    def _enter_pip(self):
+        if not self.playing or not self.playing.get("url"):
+            return
+        if self._pip_window is not None:
+            self._pip_window.raise_()
+            self._pip_window.activateWindow()
+            return
+        if self._video_fullscreen:
+            self._leave_video_fullscreen()
+        window=PiPWindow()
+        window.returnRequested.connect(self._exit_pip)
+        window.play.clicked.connect(self._toggle_play)
+        window.volume.clicked.connect(self._toggle_mute)
+        window.volume_slider.setValue(self.volume_slider.value())
+        window.volume_slider.valueChanged.connect(self.volume_slider.setValue)
+        self.volume_slider.valueChanged.connect(window.volume_slider.setValue)
+        self._pip_window=window
+        self._apply_aspect_mode()
+        # One QMediaPlayer, ONE output at a time, no new stream or audio.
+        self.player.setVideoOutput(window.video)
+        self.video_stage.setCurrentWidget(self.player_splash)
+        window.show()
+        window.move(max(0,self.x()+self.width()-window.width()-25),
+                    max(0,self.y()+self.height()-window.height()-55))
+        self._sync_pip_controls()
+        self.status.setText("Picture-in-Picture ativo · reprodução continua na janela flutuante.")
+
+    def _sync_pip_controls(self,*args):
+        window=self._pip_window
+        if window is None:
+            return
+        playing=self.player.playbackState()==QMediaPlayer.PlaybackState.PlayingState
+        window.play.setText("Pausar" if playing else "Reproduzir")
+        window.play.setIcon(svg_icon_for("pause" if playing else "play",20))
+        window.volume.setIcon(svg_icon_for("mute" if self.audio.isMuted() else "volume",20))
+
+    def _exit_pip(self):
+        window=self._pip_window
+        if window is None:
+            return
+        self._pip_window=None
+        self.player.setVideoOutput(self.video)
+        self.video_stage.setCurrentWidget(self.video if self.playing else self.player_splash)
+        window._restoring=True
+        window.close()
+        window.deleteLater()
+        self._apply_aspect_mode()
+        self.status.setText("Retornou ao player principal.")
+
     def _toggle_mute(self):
         self.audio.setMuted(not self.audio.isMuted())
         self._sync_volume_icon()
@@ -1020,6 +1545,7 @@ class MainWindow(legacy.MainWindow):
         icon="mute" if self.audio.isMuted() else "volume"
         self.volume_button.setIcon(svg_icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
         self.fs_volume_icon.setIcon(svg_icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
+        self._sync_pip_controls()
 
     def _sync_favorite_controls(self):
         enabled=self.favorite.isEnabled()
@@ -1035,6 +1561,8 @@ class MainWindow(legacy.MainWindow):
         if self._video_fullscreen:
             self._leave_video_fullscreen()
             return
+        if self._pip_window is not None:
+            self._exit_pip()
         self._video_fullscreen=True
         self._fullscreen_was_maximized=self.isMaximized()
         self._saved_panel_sizes=self.panels.sizes()
@@ -1064,16 +1592,18 @@ class MainWindow(legacy.MainWindow):
         self.menuBar().hide()
         self.outer_layout.setContentsMargins(0,0,0,0)
         self.outer_layout.setSpacing(0)
-        # Fill the display, including ultrawide screens. This crops the edges
-        # of 16:9 content on 21:9 monitors instead of drawing black pillarboxes.
-        self.video.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatioByExpanding)
+        # Default respects original aspect; cropping must be an explicit choice.
+        self._apply_aspect_mode()
         self.fs_content_label.setText(
             self.playing.get("title","AURORA IPTV") if self.playing else "AURORA IPTV")
         self._sync_play_icons()
+        self._sync_pip_controls()
+        self._sync_stream_capabilities()
         self._sync_favorite_controls()
         self._sync_volume_icon()
         self.showFullScreen()
         self._show_fullscreen_overlay()
+        self._sync_stream_capabilities()
         self.video.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _leave_video_fullscreen(self):
@@ -1084,8 +1614,7 @@ class MainWindow(legacy.MainWindow):
         self._fs_fade.stop()
         self._fs_opacity.setOpacity(1.0)
         self.fs_overlay.hide()
-        if self._saved_video_mode is not None:
-            self.video.setAspectRatioMode(self._saved_video_mode)
+        self._apply_aspect_mode()
         if self._saved_player_min_width is not None:
             self.player_panel.setMinimumWidth(self._saved_player_min_width)
         self.player_panel.setStyleSheet("")
@@ -1120,6 +1649,8 @@ class MainWindow(legacy.MainWindow):
         self.video.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _start(self, item):
+        if self._pip_window is not None:
+            self._exit_pip()
         if item.get("url"):
             self.video_stage.setCurrentWidget(self.video)
         super()._start(item)
@@ -1141,10 +1672,18 @@ class MainWindow(legacy.MainWindow):
         super()._favorite()
         self._sync_favorite_controls()
 
+    def _media_status(self, status):
+        super()._media_status(status)
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            # Playback completed, no video needs to occupy the preview area.
+            self.playing=None
+            self._update_idle_synopsis()
+
     def _player_error(self, error, error_string):
         super()._player_error(error,error_string)
         if error != QMediaPlayer.Error.NoError:
-            self.video_stage.setCurrentWidget(self.player_splash)
+            self.playing=None
+            self._update_idle_synopsis()
 
     def _theme_apply(self):
         # Replace, NEVER concatenate, stylesheets: the previous implementation
@@ -1287,10 +1826,35 @@ class MainWindow(legacy.MainWindow):
             QLabel#versionTag {{
                 font-size:12px;color:{muted};padding:4px 0;
             }}
+            QWidget#footerRow {{
+                border-top:1px solid {border};background:transparent;
+            }}
             QLabel#versionFooter {{
-                font-size:11px;color:{muted};font-weight:650;
-                padding:12px 2px 3px 0;
-                border-top:1px solid {border};
+                font-size:10px;color:{muted};font-weight:650;
+                border:none;background:transparent;
+            }}
+            QPushButton#footerUpdateButton {{
+                border:1px solid {border};border-radius:7px;
+                background:{row};padding:0;
+            }}
+            QPushButton#footerUpdateButton:hover {{
+                border:1px solid {accent};background:{inner};
+            }}
+            QWidget#idleSynopsis {{
+                background:{panel};border:1px solid {border};border-radius:11px;
+            }}
+            QLabel#idleSynopsisLabel {{
+                font-size:11px;font-weight:700;color:{accent};
+            }}
+            QLabel#idleSynopsisTitle {{
+                font-size:22px;font-weight:700;color:{text};
+            }}
+            QLabel#idleSynopsisMeta {{
+                font-size:12px;color:{muted};
+            }}
+            QTextBrowser#idleSynopsisText {{
+                color:{text};background:{panel};
+                border:none;font-size:14px;padding:8px 0;
             }}
             QFrame#configCard {{
                 background:{inner};border:1px solid {border};
@@ -1532,11 +2096,23 @@ class MainWindow(legacy.MainWindow):
         for name, button in self.nav.items():
             button.setIcon(svg_icon_for(name, 30, light=not dark))
         self.previous.setIcon(svg_icon_for("back",24,light=not dark))
-        self.action.setIcon(svg_icon_for("refresh",24,light=not dark))
+        # The primary button uses a bright mint background even in dark mode:
+        # its SVG MUST be dark blue, not near-white.
+        self.action.setIcon(svg_icon_for("refresh",24,light=True))
+        self.footer_update_button.setIcon(svg_icon_for("refresh",18,light=not dark))
         self.second_action.setIcon(svg_icon_for("manage",24,light=not dark))
         self.favorite.setIcon(svg_icon_for("favorites", 22, light=not dark))
         self.fullscreen_button.setIcon(svg_icon_for("fullscreen",20,light=not dark))
         self.fs_top_exit.setIcon(svg_icon_for("exit-fullscreen",20,light=not dark))
+        self.pip_button.setIcon(svg_icon_for("pip",20,light=not dark))
+        self.fs_pip.setIcon(svg_icon_for("pip",20,light=not dark))
+        self.aspect_button.setIcon(svg_icon_for("aspect",20,light=not dark))
+        self.fs_aspect.setIcon(svg_icon_for("aspect",20,light=not dark))
+        self.fs_back_button.setIcon(svg_icon_for("back",20,light=not dark))
+        self.fs_close_button.setIcon(svg_icon_for("close",20,light=not dark))
+        self.fs_rewind.setIcon(svg_icon_for("rewind",25,light=not dark))
+        self.fs_forward.setIcon(svg_icon_for("forward",25,light=not dark))
+        self.subtitle_button.setIcon(svg_icon_for("subtitle",20,light=not dark))
         self.fs_exit.setIcon(svg_icon_for("exit-fullscreen",20,light=not dark))
         self.fs_favorite.setIcon(svg_icon_for("favorites",21,light=not dark))
         self.config_epg_button.setIcon(svg_icon_for("settings",24,light=not dark))
@@ -1647,7 +2223,7 @@ class MainWindow(legacy.MainWindow):
             "home":"Continuar assistindo", "live":"Canais disponíveis",
             "movie":"Filmes", "series":"Séries", "episodes":self.series_name,
             "favorites":"Favoritos", "settings":"Playlists e preferências",
-            "football":"Agenda de futebol",
+            "football":"Agenda de futebol", "uncategorized":"Não classificados",
         }
         self.heading.setText(titles.get(self.mode,"AURORA IPTV"))
         self.groups_title.setText("CLASSIFICAÇÃO" if self.mode != "football" else "CAMPEONATOS")
@@ -1666,6 +2242,9 @@ class MainWindow(legacy.MainWindow):
         self.selected_category = None
         self.offset = 0
         self._football_card_widgets.clear()
+        if not getattr(self,"playing",None):
+            self.selected=None
+            self._update_idle_synopsis(None)
         self.football_refresh.setVisible(self.mode == "football")
         self.guide_busy.setVisible(self.mode == "football" and bool(
             getattr(self, "guide_thread", None) and self.guide_thread.isRunning()))
@@ -1674,8 +2253,10 @@ class MainWindow(legacy.MainWindow):
         self.action.setText("Adicionar URL M3U" if self.mode == "settings" or self.playlist_id is None
                             else "Atualizar EPG Futebol" if self.mode == "football"
                             else "Atualizar playlist")
-        self.action.setIcon(svg_icon_for("add" if self.mode == "settings" or self.playlist_id is None
-                                         else "refresh",light=not getattr(self,"_theme_dark",True)))
+        # High contrast on turquoise primary buttons, regardless of theme.
+        self.action.setIcon(svg_icon_for(
+            "add" if self.mode == "settings" or self.playlist_id is None else "refresh",
+            24,light=True))
         self.second_action.setText("Importar arquivo local" if self.mode == "settings"
                                    else "Configurar EPG" if self.mode == "football"
                                    else "Gerenciar playlists")
@@ -1690,16 +2271,18 @@ class MainWindow(legacy.MainWindow):
             self.subtitle.setText("Agenda do EPG e canais esportivos disponíveis.")
         elif self.mode == "series":
             self.subtitle.setText("Gêneros de séries, plataformas e categorias da playlist.")
+        elif self.mode == "uncategorized":
+            self.subtitle.setText("Itens com tipo incerto. Clique com o botão direito para classificar sem alterar a playlist original.")
         else:
             self.subtitle.setText("Escolha uma categoria; a lista carrega conforme você rola.")
-        if self.playlist_id is not None and self.mode in ("live","movie","series") and self.playlist_id not in self._indexed:
+        if self.playlist_id is not None and self.mode in ("live","movie","series","uncategorized") and self.playlist_id not in self._indexed:
             self.results.clear()
             self.groups.clear()
             self.page.setText("Organizando as categorias em segundo plano...")
             if self.playlist_id not in self._index_error:
                 self._start_index(self.playlist_id)
             return
-        if self.mode in ("live","movie","series") and self.playlist_id is not None:
+        if self.mode in ("live","movie","series","uncategorized") and self.playlist_id is not None:
             categories = self.library.categories(self.playlist_id,self.mode)
             choices = [(f"Todos ({sum(g['total'] for g in categories):,})",None)]
             choices += [(f"{g['title']}  ·  {g['total']:,}",g["title"]) for g in categories]
@@ -1735,7 +2318,7 @@ class MainWindow(legacy.MainWindow):
         item.setToolTip(label.replace("\n", " — "))
         self.results.addItem(item)
         if record.get("kind") != "football":
-            self.covers.enqueue(item,record.get("logo",""),record.get("kind","movie"))
+            self.covers.enqueue(item,pick_best_art(record),record.get("kind","movie"))
         return item
 
     def _load_items(self,reset=False):
@@ -1938,6 +2521,39 @@ class MainWindow(legacy.MainWindow):
         if scrollbar.maximum() - value < 420 and self.mode in ("live","movie","series","football"):
             self._load_items()
 
+    def _context(self,position):
+        if self.mode == "settings":
+            return super()._context(position)
+        if self.mode not in ("live","movie","series","uncategorized"):
+            return
+        item=self.results.itemAt(position)
+        if item is None or self.playlist_id is None:
+            return
+        row=item.data(Qt.ItemDataRole.UserRole)
+        if (not isinstance(row,dict) or not row.get("key")
+                or row.get("kind") in ("playlist","empty","football")
+                or (row.get("kind")=="series" and self.mode=="series")):
+            return
+        menu=QMenu(self)
+        choices={
+            "live":menu.addAction("Classificar como canal ao vivo"),
+            "movie":menu.addAction("Classificar como filme"),
+            "series":menu.addAction("Classificar como episódio de série"),
+            "uncategorized":menu.addAction("Marcar como não classificado"),
+        }
+        menu.addSeparator()
+        automatic=menu.addAction("Restaurar classificação automática")
+        selected=menu.exec(self.results.mapToGlobal(position))
+        if selected is None:
+            return
+        kind=next((kind for kind,action in choices.items() if action is selected),None)
+        if selected is not automatic and kind is None:
+            return
+        self.library.set_kind_override(self.playlist_id,row["key"],kind)
+        self.status.setText("Tipo corrigido e salvo. Favoritos e histórico foram preservados.")
+        # Refresh only the current page, never reload the full M3U.
+        self._load_items(reset=True)
+
     def _selected(self,current,previous=None):
         self.selected = current.data(Qt.ItemDataRole.UserRole) if current else None
         row = self.selected
@@ -1948,9 +2564,44 @@ class MainWindow(legacy.MainWindow):
             self.favorite.setText("Remover favorito" if self.library.is_favorite(self.playlist_id,k) else "Favoritar")
         self._sync_favorite_controls()
         self.synopsis_button.setVisible(bool(row and row.get("kind") in ("movie","series")))
+        self._update_idle_synopsis(row)
+
+    def _update_idle_synopsis(self, row=None):
+        """Show synopsis inside the player area while there is no active media.
+
+        Selecting a different item must never detach an ongoing video or PiP.
+        Plain text is used so provider descriptions cannot inject rich HTML.
+        """
+        if getattr(self,"playing",None) is not None:
+            return
+        row = row if row is not None else getattr(self,"selected",None)
+        kind = row.get("kind","") if isinstance(row,dict) else ""
+        if kind not in ("movie","series","live","football","football_channel"):
+            self.idle_synopsis_image.setProperty("artworkUrl","")
+            self.idle_synopsis_image.hide()
+            self.video_stage.setCurrentWidget(self.player_splash)
+            self.video_title.setText("Escolha um conteúdo")
+            return
+        title = (row.get("series_name") if kind=="series" and row.get("series_name")
+                 else row.get("title") or "Conteúdo sem título")
+        synopsis = str(row.get("synopsis") or row.get("description")
+                       or row.get("plot") or "").strip()
+        category = row.get("category") or row.get("group_name") or ""
+        readable_kind = {"movie":"Filme","series":"Série","live":"Canal ao vivo",
+                         "football":"Futebol","football_channel":"Canal esportivo"}[kind]
+        self.idle_synopsis_title.setText(str(title))
+        self.idle_synopsis_metadata.setText(
+            readable_kind + ("  ·  " + str(category) if category else ""))
+        self.idle_synopsis_text.setPlainText(
+            synopsis if synopsis else "Sinopse não disponível para este conteúdo.")
+        # Selecting another card cancels the previous preview association:
+        # late network responses cannot replace the new selection's artwork.
+        self.covers.enqueue_preview(self.idle_synopsis_image,pick_best_art(row),kind)
+        self.video_title.setText(str(title))
+        self.video_stage.setCurrentWidget(self.idle_synopsis)
 
     def _remember_browse(self):
-        if self.mode not in ("home","favorites","series","movie","football","live","episodes"):
+        if self.mode not in ("home","favorites","series","movie","football","live","episodes","uncategorized"):
             return
         self._browse_history.append({
             "mode":self.mode,
@@ -2109,7 +2760,7 @@ class MainWindow(legacy.MainWindow):
     def _index_done(self):
         self.index_thread = None
         self.index_worker = None
-        if (self.playlist_id is not None and self.mode in ("live","movie","series")
+        if (self.playlist_id is not None and self.mode in ("live","movie","series","uncategorized")
                 and self.playlist_id not in self._indexed
                 and self.playlist_id not in self._index_error):
             self._refresh()
@@ -2210,12 +2861,14 @@ class MainWindow(legacy.MainWindow):
     def closeEvent(self,event):
         controller = getattr(self, "update_controller", None)
         if controller is not None:
-            if controller.downloader is not None and controller.downloader.isRunning():
+            downloader=getattr(controller,"downloader",None)
+            checker=getattr(controller,"checker",None)
+            if downloader is not None and downloader.isRunning():
                 controller.shutdown()
                 self.status.setText("Cancelando download de atualização antes de sair...")
                 event.ignore()
                 return
-            if controller.checker is not None and controller.checker.isRunning():
+            if checker is not None and checker.isRunning():
                 self.status.setText("Aguarde a verificação de atualizações terminar.")
                 event.ignore()
                 return
@@ -2231,6 +2884,7 @@ class MainWindow(legacy.MainWindow):
             self.status.setText("Consultando resultados esportivos; encerramento após a consulta.")
             event.ignore()
             return
+        self._exit_pip()
         self._live_badge_timer.stop()
         self._score_timer.stop()
         super().closeEvent(event)
@@ -2255,4 +2909,11 @@ def main():
     window.show()
     QTimer.singleShot(350, window.update_controller.show_previous_result)
     QTimer.singleShot(6000, lambda: window.update_controller.check(manual=False))
+    # Recheck periodically while AURORA stays open; GitHub releases can
+    # become available after the initial start-up check.
+    window.update_check_timer=QTimer(window)
+    window.update_check_timer.setInterval(30*60*1000)
+    window.update_check_timer.timeout.connect(
+        lambda: window.update_controller.check(manual=False))
+    window.update_check_timer.start()
     return app.exec()

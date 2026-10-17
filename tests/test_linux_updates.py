@@ -152,3 +152,34 @@ def test_linux_script_waits_for_exit_runs_mock_pkexec_and_reopens(tmp_path):
         assert json.loads(status.read_text())["status"]=="ok"
     finally:
         parent.wait(timeout=5)
+
+
+def test_date_release_linux_uses_only_verified_deb_not_tarball(tmp_path):
+    from aurora_desktop.updater import debian_asset_name
+    tag="v0.6.0-171026.01"
+    filename="aurora-iptv_0.6.0-date20261017.01_amd64.deb"
+    assert debian_asset_name(tag)==filename
+    release={
+        "tag_name":tag,"draft":False,"prerelease":True,
+        "html_url":f"https://github.com/fabriciomatosqa/aurora-iptv-desktop/releases/tag/{tag}",
+        "assets":[{
+            "name":filename,"size":132,"digest":"sha256:"+("a"*64),
+            "browser_download_url":f"https://github.com/fabriciomatosqa/aurora-iptv-desktop/releases/download/{tag}/{filename}",
+        },{
+            "name":"AURORA-IPTV-Desktop-linux-x86_64.tar.gz","size":100,
+            "digest":"sha256:"+("b"*64),
+            "browser_download_url":f"https://github.com/fabriciomatosqa/aurora-iptv-desktop/releases/download/{tag}/AURORA-IPTV-Desktop-linux-x86_64.tar.gz",
+        }]
+    }
+    result=discover_release("0.6.0-beta.15","beta","linux",FakeClient(
+        FakeResponse([release],RELEASES_API+"?per_page=40")))
+    assert result.tag==tag and result.installer.name==filename
+    assert discover_release("0.6.0-beta.15","stable","linux",FakeClient(
+        FakeResponse([release],RELEASES_API+"?per_page=40"))) is None
+    data=b"!<arch>\\n"+b"AURORA-TEST"*60
+    digest="sha256:"+hashlib.sha256(data).hexdigest()
+    asset=ReleaseAsset(filename,len(data),
+        "https://github.com/fabriciomatosqa/aurora-iptv-desktop/releases/download/"+tag+"/"+filename,digest)
+    output=download_verified(asset,folder=tmp_path,client=FakeClient(
+        FakeResponse(data,"https://release-assets.githubusercontent.com/test")))
+    assert output.read_bytes()==data

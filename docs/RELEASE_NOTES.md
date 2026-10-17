@@ -1,26 +1,40 @@
-# AURORA IPTV Desktop 0.6.0-beta.14
+# AURORA IPTV Desktop v0.6.0-beta.15 (candidata)
 
-## Futebol: placares reais e escudos adaptados do Android
-- Integra consultas assíncronas ao placar público disponibilizado pela ESPN, usando apenas campeonato e data, sem compartilhar URLs de playlists ou credenciais.
-- Atualiza os resultados enquanto a agenda Futebol está visível, com ciclo de 60 segundos e limite de consultas concorrentes; mantém as partidas carregadas, filtros e posição de rolagem.
-- Cruza nome exato das duas equipes, competição e data antes de mostrar placar ou minuto. Partidas com identificação ambígua permanecem sem resultado.
-- Adiciona cards com logotipo de competição, escudos separados de mandante e visitante, placar/tempo quando confirmados, canal de transmissão e horário local.
-- Para seleções, reaproveita quatro URLs de escudos já usadas no Android (Brasil/CBF, Argentina/AFA, EUA/US Soccer, Espanha/RFEF), com identificação FIFA na competição.
-- Mostra o estado do jogo separadamente do estado da transmissão no XMLTV. Nunca afirma que um canal está transmitindo um jogo simplesmente porque ele está acontecendo.
-- Em falhas de conexão ou dados indisponíveis, mantém os dados existentes, preserva o catálogo e informa estados ausentes ou desatualizados, sem inventar jogos.
-- Em Configurações → Guia de futebol, há opção para ativar/desativar as consultas online de placares e imagens esportivas.
+## Banner ultrawide
+- O banner não usa mais crop indiscriminado para cobrir monitores largos. Preserva a imagem ao centro e reflete suas laterais quando há espaço extra, sem mudar sua proporção.
+- Mantém toda a largura preenchida, logotipo e textos legíveis, com desenho direto em QPainter.
 
-## Interface e regressões
-- Padroniza ícones de vídeo, áudio, fullscreen, Favoritos e navegação no mesmo renderizador SVG HiDPI.
-- Preserva a categoria e o campeonato ao fazer buscas.
-- Padroniza a engrenagem de Configurar EPG, adiciona progresso indeterminado e impede múltiplas atualizações simultâneas.
-- Mantém os ajustes da beta.13: partidas identificadas no XMLTV, reprises sinalizadas, horários HH:mm, navegação por histórico e sinopses quando disponíveis.
+## Player em tela cheia e controles
+- O vídeo passa a iniciar em **Ajustar à tela**, evitando cortar cenas por padrão.
+- Controles sobrepostos: retroceder/avançar 10 segundos quando o stream permite seek, reproduzir/pausar, volume, favoritos, proporção, PiP, idiomas de áudio e legendas presentes na mídia, velocidade em mídias sob demanda.
+- HUD aparece ao interagir, começa a desaparecer aos 3 s e termina em 5 s; não some enquanto seus menus estão abertos.
+- Atalhos Space, F, M, setas e Esc, sem afetar campo de busca.
+- Proporção suportada nativamente no Qt Multimedia: ajustar, preencher e esticar. Os modos numéricos 16:9/4:3/2:1/21:9 requerem renderizador que permita forçar pixel aspect ratio e não são anunciados como disponíveis sem suporte.
 
-## Testes e distribuição
-- Testes determinísticos para identidade de clubes e seleções, ausência de placares fictícios, fontes HTTPS permitidas, consultas limitadas, privacidade das playlists e atualização dos cards sem perda da seleção.
-- Builds Windows e Linux por GitHub Actions; instaladores são publicados após a integração e somente se os testes dos dois sistemas passarem.
-- Preserva SQLite, múltiplas playlists, favoritos, progresso, player e checagem de atualização.
+## Picture-in-Picture
+- Janela Qt independente, redimensionável e móvel com Sempre no topo (quando permitido pelo sistema), controles de pausa, som, volume e retorno.
+- O **mesmo QMediaPlayer** alterna seu QVideoWidget entre a interface principal e o PiP. Sem segundo stream, player ou áudio; ao retornar, a mídia não é reaberta.
+- Wayland pode ignorar sempre no topo; suporte a troca de saída de vídeo depende do backend do Qt e precisa de teste manual nos principais drivers.
 
-**Condições de uso:** o recurso consulta endpoints públicos utilizados no projeto Android, mas isso não é uma licença de exploração comercial. TheSportsDB exige uma assinatura paga para aplicativos publicados em lojas e uma assinatura não transfere direitos sobre os escudos de terceiros. As marcas/logotipos de clubes, confederações e campeonatos também exigem verificação de direitos antes de vender ou distribuir comercialmente o aplicativo. Veja docs/SPORTS_DATA_SOURCES.md.
+## Catálogo e preservação
+- Regras de classificação por tipo explícito, caminho, marcadores de episódio, grupo e extensão; conteúdo ambíguo vai para a seção interna **Não classificados**.
+- Configurações → Playlists → Revisar conteúdos não classificados, com menu contextual para mover conteúdo para canais, filmes ou séries ou restaurar classificação automática.
+- Correções persistem em tabela SQLite própria e sobrevivem à atualização; itens por URL não são duplicados, favoritos/progresso permanecem válidos.
+- Reclassificação incremental v6 (lotes de 1200 itens), sem baixar novamente o catálogo original só para migrar.
 
-**Limites técnicos:** nenhuma API confirma automaticamente o conteúdo efetivo do stream IPTV. O aviso de transmissão vem do XMLTV; o placar vem do provedor esportivo. Nem toda competição, jogo ou federação dispõe de imagens e resultados verificáveis.
+## Atualizações e experiência da interface
+- Correção da consulta automática: a beta.14 registrava um prazo de 24h mesmo antes de terminar uma consulta, podendo perder versões publicadas durante o dia.
+- A partir desta versão, as verificações bem-sucedidas têm intervalo de até 30 minutos; falhas de conexão permitem uma nova tentativa depois de cinco minutos, sem bloquear por 24h.
+- Enquanto o aplicativo estiver aberto, uma verificação automática é agendada a cada 30 minutos. A escolha de canal Beta/Estável é respeitada.
+- Novo botão SVG no rodapé, imediatamente à direita da versão, para verificar manualmente atualizações sem abrir Configurações.
+- Ícone da ação **Atualizar playlist** com contraste alto em fundo verde/turquesa.
+- O painel do player passa a mostrar a sinopse ou descrição disponível do item selecionado quando não houver vídeo em execução. Falta de sinopse é indicada explicitamente; nenhum resumo é fabricado.
+- O vídeo e PiP em execução não são substituídos pela sinopse ao navegar; a visualização de resumo retorna ao fechar ou terminar a reprodução.
+
+**Diagnóstico da transição beta.14 → beta.15:** não havia versão beta.15 publicada em GitHub Releases no momento da inspeção. Compilações candidatas do PR não são consideradas versões instaláveis. O aplicativo só pode oferecer uma nova versão depois que o Release com seus instaladores verificados estiver publicado.
+
+## Qualidade e compatibilidade
+- Testes automáticos Linux/Windows abrangendo PiP, fullscreen, proporção, banner e migração de catálogo.
+- Preservam-se as implementações da beta.14: EPG, futebol, placares quando disponíveis, reprodução, sinopses, atualizações e preferências.
+
+**Aviso**: recursos de áudio/legenda dependem das faixas expostas pelo backend multimídia. Não é possível garantir PiP sempre no topo em todos os compositores Wayland nem forçar proporções arbitrárias em QVideoWidget sem mudar o renderizador.
