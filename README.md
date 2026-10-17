@@ -1,6 +1,16 @@
-# AURORA IPTV — Desktop 0.6.0-beta.11
+# AURORA IPTV — Desktop 0.6.0-beta.12
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
+
+## v0.6.0-beta.12 — preferências integradas e ícones SVG
+
+- O menu superior Aparência / Playlists / Atualizações foi removido e **todas as opções migraram para Configurações**.
+- Configurações traz quatro seções na navegação por categorias: Playlists (playlist ativa, adicionar URL, importar M3U, atualizar e editar pela lista), Aparência (sistema/escuro/claro), Atualizações (versão instalada, canal estável/beta e verificar novas versões) e Guia Futebol (configurar e atualizar EPG).
+- A checagem automática continua acontecendo na abertura, e a atualização interna Windows/Linux não foi alterada.
+- Banner da aurora percorre **toda a largura** do topo, com arte mais aparente e menos elementos competindo no canto direito.
+- Menu lateral com altura ligeiramente maior, ícones genuinamente **SVG vetoriais** e cores/espessura uniformes.
+- Botões inferiores de navegação, importar e atualizar também receberam SVG, substituindo símbolos de texto.
+- Mensagem "Luzes da aurora, seu universo" removida. A versão `DESKTOP / v0.6.0-beta.12` aparece no canto inferior direito da barra lateral, em lugar do antigo rótulo superior.
 
 ## v0.6.0-beta.11 — player imersivo e topo inspirado no Aurora Utils
 
