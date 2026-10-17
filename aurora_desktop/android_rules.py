@@ -42,54 +42,60 @@ def has_episode_marker(name: str) -> bool:
     return any(p.search(name) for p in EPISODE_PATTERNS) or bool(EPISODE_ONLY.search(name))
 
 
-def classify_content(name: str, group: str, url: str, type_hint: str = "") -> str:
-    """Conservative IPTV type inference: provider > structure > group > filename.
+def classify_content(name: str, group: str, url: str, type_hint: str = "",
+                     tvg_id: str = "", provider_kind: str = "") -> str:
+    """Resolve IPTV content from independent evidence, not category labels alone.
 
-    A generic opaque URL is NOT proof of a live television channel.
-    Ambiguous content stays in `uncategorized` until corrected by the user.
+    Precedence: explicit *item* metadata; structurally typed stream and episode
+    markers; TV-guide ID; provider category; generic category/extension fallback.
+    Provider categories are NOT allowed to relabel an episode as a film or an
+    actual live MPEG-TS stream as a series. Opaque unidentifiable content is
+    quarantined rather than assigned arbitrarily to live television.
     """
     hint = normalized(type_hint)
-    explicit = {
-        "live":"live", "tv":"live", "ao vivo":"live", "channel":"live",
-        "movie":"movie", "movies":"movie", "filme":"movie", "filmes":"movie",
-        "series":"series", "serie":"series", "episode":"series",
-        "episodio":"series", "tv show":"series",
+    declared = {
+        "live": "live", "tv": "live", "ao vivo": "live", "channel": "live",
+        "movie": "movie", "movies": "movie", "filme": "movie", "filmes": "movie",
+        "vod": "movie", "series": "series", "serie": "series",
+        "episode": "series", "episodio": "series", "tv show": "series",
     }.get(hint)
-    if explicit:
-        return explicit
+    if declared:
+        return declared
+
     path = urlsplit(url).path.lower()
     category = normalized(group)
-    # Identifiers and episode markers are much stronger than a provider's
-    # broad generic category ("Filmes e séries", "Atualizações", "Diversos").
-    if any(segment in path for segment in ("/series/","/episode/","/episodes/")):
+    # Xtream /play/<opaque>/ts is an actual television transport stream.
+    # Other /play/<opaque> URLs have no type information, even if HLS/MPEG-TS
+    # is selected in the playlist output parameter.
+    if (any(s in path for s in ("/live/", "/channel/", "/channels/"))
+            or (path.startswith("/play/") and path.endswith(("/ts", "/m3u8")))):
+        return "live"
+    if any(s in path for s in ("/series/", "/episode/", "/episodes/")):
         return "series"
     if has_episode_marker(name):
         return "series"
-    if any(segment in path for segment in ("/live/","/channel/","/channels/")):
-        return "live"
-    if any(segment in path for segment in ("/movie/","/movies/","/vod/","/film/")):
+    if any(s in path for s in ("/movie/", "/movies/", "/vod/", "/film/")):
         return "movie"
-    if path.startswith("/play/") and (path.endswith("/ts") or path.endswith("/m3u8")):
+    if tvg_id.strip():
         return "live"
-    # Xtream providers sometimes mark movies as 'vod' without a path.
-    if hint == "vod":
-        return "movie"
-    if category.startswith("canais ") or "ao vivo" in category or category.startswith("live "):
+
+    if provider_kind in ("live", "movie", "series"):
+        return provider_kind
+    # A channel collection remains live even when its name contains "series"
+    # or "cinema"; generic keyword rules must run afterwards.
+    if (category.startswith(("canais ", "canal ", "live ", "ao vivo", "ppv "))
+            or category == "canais" or category == "ppv"):
         return "live"
-    if SERIES_WORDS.search(category) and "filmes e series" not in category:
-        return "series"
-    if MOVIE_WORDS.search(category) and "filmes e series" not in category:
-        return "movie"
     if "filmes e series" in category:
-        if VOD_FILE.search(url):
-            return "movie"
-        return "uncategorized"
+        return "movie" if VOD_FILE.search(url) else "uncategorized"
+    if SERIES_WORDS.search(category):
+        return "series"
+    if MOVIE_WORDS.search(category):
+        return "movie"
     if VOD_FILE.search(url):
         return "movie"
-    # .ts and stream .m3u8 without any film/series evidence are live feeds.
-    if re.search(r"\.(?:ts|m3u8)(?:$|[?#])", url, re.I):
+    if re.search(r"\\.(?:ts|m3u8)(?:$|[?#])", url, re.I):
         return "live"
-    # Don't place opaque, unidentified streams under TV without evidence.
     return "uncategorized"
 
 
