@@ -130,6 +130,17 @@ class PiPWindow(QWidget):
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, enabled)
         self.show()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Window layouts change when a second monitor is removed. Never leave
+        # a restored PiP entirely outside the available desktop area.
+        rect = self.frameGeometry()
+        screens = QApplication.screens()
+        if screens and not any(screen.availableGeometry().intersects(rect) for screen in screens):
+            available = QApplication.primaryScreen().availableGeometry()
+            self.move(max(available.left(), available.right() - self.width() - 18),
+                      max(available.top(), available.bottom() - self.height() - 18))
+
     def closeEvent(self, event):
         if not self._closing_for_app:
             self.restore_requested.emit()
