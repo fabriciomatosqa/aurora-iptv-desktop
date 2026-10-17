@@ -1067,7 +1067,8 @@ class MainWindow(legacy.MainWindow):
             kind=event.type()
             if kind == QEvent.Type.KeyPress:
                 focus = QApplication.focusWidget()
-                if not isinstance(focus, (QLineEdit, QTextBrowser, QComboBox, QSlider)):
+                if (QApplication.activePopupWidget() is None and
+                        not isinstance(focus, (QLineEdit, QTextBrowser, QComboBox, QSlider))):
                     arrows = {
                         Qt.Key.Key_Up: "Up", Qt.Key.Key_Down: "Down",
                         Qt.Key.Key_Left: "Left", Qt.Key.Key_Right: "Right"
