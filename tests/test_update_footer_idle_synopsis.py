@@ -90,9 +90,12 @@ def test_footer_update_button_is_clickable_and_primary_icon_has_contrast(tmp_pat
     app=QApplication.instance() or QApplication([])
     window=MainWindow()
     requests=[]
-    class Controller:
-        def check(self,manual=False): requests.append(manual)
-    window.update_controller=Controller()
+    # Use the production controller, only stub its network entrypoint.
+    # A duck-typed fake without downloader/checker broke closeEvent and made
+    # the Qt event filter repeatedly emit errors during window shutdown.
+    controller=UpdateController(window)
+    controller.check=lambda manual=False: requests.append(manual)
+    window.update_controller=controller
     try:
         window.show()
         app.processEvents()
