@@ -471,10 +471,25 @@ class MainWindow(legacy.MainWindow):
             side.addWidget(button)
         side.addStretch()
         from . import __version__
-        footer = QLabel(f"DESKTOP  /  v{__version__}")
+        footer_row=QWidget(sidebar)
+        footer_row.setObjectName("footerRow")
+        footer_layout=QHBoxLayout(footer_row)
+        footer_layout.setContentsMargins(0,7,0,0)
+        footer_layout.setSpacing(4)
+        footer = QLabel(f"DESKTOP / v{__version__}")
         footer.setObjectName("versionFooter")
         footer.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        side.addWidget(footer)
+        footer_layout.addWidget(footer,1)
+        self.footer_update_button=QPushButton()
+        self.footer_update_button.setObjectName("footerUpdateButton")
+        self.footer_update_button.setFixedSize(28,28)
+        self.footer_update_button.setIcon(svg_icon_for("refresh",18))
+        self.footer_update_button.setIconSize(QSize(18,18))
+        self.footer_update_button.setToolTip("Verificar novas versões do AURORA IPTV agora")
+        self.footer_update_button.setAccessibleName("Verificar atualizações")
+        self.footer_update_button.clicked.connect(self._check_updates_now)
+        footer_layout.addWidget(self.footer_update_button)
+        side.addWidget(footer_row)
         base.addWidget(sidebar)
         self.sidebar = sidebar
 
@@ -778,6 +793,31 @@ class MainWindow(legacy.MainWindow):
         self.video_stage.setObjectName("videoStage")
         self.video_stage.addWidget(self.player_splash)
         self.video_stage.addWidget(self.video)
+        self.idle_synopsis=QWidget()
+        self.idle_synopsis.setObjectName("idleSynopsis")
+        preview_layout=QVBoxLayout(self.idle_synopsis)
+        preview_layout.setContentsMargins(27,28,27,24)
+        preview_layout.setSpacing(12)
+        preview_label=QLabel("SINOPSE DO CONTEÚDO SELECIONADO")
+        preview_label.setObjectName("idleSynopsisLabel")
+        preview_layout.addWidget(preview_label)
+        self.idle_synopsis_title=QLabel("")
+        self.idle_synopsis_title.setObjectName("idleSynopsisTitle")
+        self.idle_synopsis_title.setWordWrap(True)
+        preview_layout.addWidget(self.idle_synopsis_title)
+        self.idle_synopsis_metadata=QLabel("")
+        self.idle_synopsis_metadata.setObjectName("idleSynopsisMeta")
+        self.idle_synopsis_metadata.setWordWrap(True)
+        preview_layout.addWidget(self.idle_synopsis_metadata)
+        self.idle_synopsis_text=QTextBrowser()
+        self.idle_synopsis_text.setObjectName("idleSynopsisText")
+        self.idle_synopsis_text.setReadOnly(True)
+        self.idle_synopsis_text.setOpenExternalLinks(False)
+        preview_layout.addWidget(self.idle_synopsis_text,1)
+        preview_note=QLabel("Dê dois cliques no conteúdo para reproduzir.")
+        preview_note.setObjectName("idleSynopsisMeta")
+        preview_layout.addWidget(preview_note)
+        self.video_stage.addWidget(self.idle_synopsis)
         self.video_stage.setCurrentWidget(self.player_splash)
         play_layout.addWidget(self.video_stage,1)
         self.player = QMediaPlayer(self)
@@ -1179,7 +1219,7 @@ class MainWindow(legacy.MainWindow):
         self.playing=None
         self.selected=None
         self.video_stage.setCurrentWidget(self.player_splash)
-        self.video_title.setText("Escolha um conteúdo")
+        self._update_idle_synopsis()
         self.status.setText("Player fechado. Escolha outro conteúdo.")
         self._sync_stream_capabilities()
 
@@ -1617,10 +1657,35 @@ class MainWindow(legacy.MainWindow):
             QLabel#versionTag {{
                 font-size:12px;color:{muted};padding:4px 0;
             }}
+            QWidget#footerRow {{
+                border-top:1px solid {border};background:transparent;
+            }}
             QLabel#versionFooter {{
-                font-size:11px;color:{muted};font-weight:650;
-                padding:12px 2px 3px 0;
-                border-top:1px solid {border};
+                font-size:10px;color:{muted};font-weight:650;
+                border:none;background:transparent;
+            }}
+            QPushButton#footerUpdateButton {{
+                border:1px solid {border};border-radius:7px;
+                background:{row};padding:0;
+            }}
+            QPushButton#footerUpdateButton:hover {{
+                border:1px solid {accent};background:{inner};
+            }}
+            QWidget#idleSynopsis {{
+                background:{panel};border:1px solid {border};border-radius:11px;
+            }}
+            QLabel#idleSynopsisLabel {{
+                font-size:11px;font-weight:700;color:{accent};
+            }}
+            QLabel#idleSynopsisTitle {{
+                font-size:22px;font-weight:700;color:{text};
+            }}
+            QLabel#idleSynopsisMeta {{
+                font-size:12px;color:{muted};
+            }}
+            QTextBrowser#idleSynopsisText {{
+                color:{text};background:{panel};
+                border:none;font-size:14px;padding:8px 0;
             }}
             QFrame#configCard {{
                 background:{inner};border:1px solid {border};
@@ -1862,7 +1927,10 @@ class MainWindow(legacy.MainWindow):
         for name, button in self.nav.items():
             button.setIcon(svg_icon_for(name, 30, light=not dark))
         self.previous.setIcon(svg_icon_for("back",24,light=not dark))
-        self.action.setIcon(svg_icon_for("refresh",24,light=not dark))
+        # The primary button uses a bright mint background even in dark mode:
+        # its SVG MUST be dark blue, not near-white.
+        self.action.setIcon(svg_icon_for("refresh",24,light=True))
+        self.footer_update_button.setIcon(svg_icon_for("refresh",18,light=not dark))
         self.second_action.setIcon(svg_icon_for("manage",24,light=not dark))
         self.favorite.setIcon(svg_icon_for("favorites", 22, light=not dark))
         self.fullscreen_button.setIcon(svg_icon_for("fullscreen",20,light=not dark))
@@ -2005,6 +2073,8 @@ class MainWindow(legacy.MainWindow):
         self.selected_category = None
         self.offset = 0
         self._football_card_widgets.clear()
+        if not getattr(self,"playing",None):
+            self._update_idle_synopsis(None)
         self.football_refresh.setVisible(self.mode == "football")
         self.guide_busy.setVisible(self.mode == "football" and bool(
             getattr(self, "guide_thread", None) and self.guide_thread.isRunning()))
@@ -2013,8 +2083,10 @@ class MainWindow(legacy.MainWindow):
         self.action.setText("Adicionar URL M3U" if self.mode == "settings" or self.playlist_id is None
                             else "Atualizar EPG Futebol" if self.mode == "football"
                             else "Atualizar playlist")
-        self.action.setIcon(svg_icon_for("add" if self.mode == "settings" or self.playlist_id is None
-                                         else "refresh",light=not getattr(self,"_theme_dark",True)))
+        # High contrast on turquoise primary buttons, regardless of theme.
+        self.action.setIcon(svg_icon_for(
+            "add" if self.mode == "settings" or self.playlist_id is None else "refresh",
+            24,light=True))
         self.second_action.setText("Importar arquivo local" if self.mode == "settings"
                                    else "Configurar EPG" if self.mode == "football"
                                    else "Gerenciar playlists")
@@ -2322,6 +2394,36 @@ class MainWindow(legacy.MainWindow):
             self.favorite.setText("Remover favorito" if self.library.is_favorite(self.playlist_id,k) else "Favoritar")
         self._sync_favorite_controls()
         self.synopsis_button.setVisible(bool(row and row.get("kind") in ("movie","series")))
+        self._update_idle_synopsis(row)
+
+    def _update_idle_synopsis(self, row=None):
+        """Show synopsis inside the player area while there is no active media.
+
+        Selecting a different item must never detach an ongoing video or PiP.
+        Plain text is used so provider descriptions cannot inject rich HTML.
+        """
+        if getattr(self,"playing",None) is not None:
+            return
+        row = row if row is not None else getattr(self,"selected",None)
+        kind = row.get("kind","") if isinstance(row,dict) else ""
+        if kind not in ("movie","series","live","football","football_channel"):
+            self.video_stage.setCurrentWidget(self.player_splash)
+            self.video_title.setText("Escolha um conteúdo")
+            return
+        title = (row.get("series_name") if kind=="series" and row.get("series_name")
+                 else row.get("title") or "Conteúdo sem título")
+        synopsis = str(row.get("synopsis") or row.get("description")
+                       or row.get("plot") or "").strip()
+        category = row.get("category") or row.get("group_name") or ""
+        readable_kind = {"movie":"Filme","series":"Série","live":"Canal ao vivo",
+                         "football":"Futebol","football_channel":"Canal esportivo"}[kind]
+        self.idle_synopsis_title.setText(str(title))
+        self.idle_synopsis_metadata.setText(
+            readable_kind + ("  ·  " + str(category) if category else ""))
+        self.idle_synopsis_text.setPlainText(
+            synopsis if synopsis else "Sinopse não disponível para este conteúdo.")
+        self.video_title.setText(str(title))
+        self.video_stage.setCurrentWidget(self.idle_synopsis)
 
     def _remember_browse(self):
         if self.mode not in ("home","favorites","series","movie","football","live","episodes","uncategorized"):
@@ -2630,4 +2732,11 @@ def main():
     window.show()
     QTimer.singleShot(350, window.update_controller.show_previous_result)
     QTimer.singleShot(6000, lambda: window.update_controller.check(manual=False))
+    # Recheck periodically while AURORA stays open; GitHub releases can
+    # become available after the initial start-up check.
+    window.update_check_timer=QTimer(window)
+    window.update_check_timer.setInterval(30*60*1000)
+    window.update_check_timer.timeout.connect(
+        lambda: window.update_controller.check(manual=False))
+    window.update_check_timer.start()
     return app.exec()
