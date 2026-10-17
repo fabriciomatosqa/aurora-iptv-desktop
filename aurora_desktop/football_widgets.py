@@ -116,6 +116,10 @@ class FootballCardWidget(QFrame):
         self.league.setObjectName("competitionLabel")
         self.league.setWordWrap(True)
         top.addWidget(self.league, 1)
+        self.status_dot = QFrame()
+        self.status_dot.setObjectName("liveIndicator")
+        self.status_dot.setFixedSize(9, 9)
+        top.addWidget(self.status_dot)
         self.status = QLabel()
         self.status.setObjectName("matchStatus")
         top.addWidget(self.status)
@@ -183,8 +187,11 @@ class FootballCardWidget(QFrame):
 
     def set_pulse(self, on: bool):
         self._pulse_on = on
-        if self._live and self.row.get("broadcast") != "replay":
-            self.status.setText(("● " if on else "  ") + self._live_text)
+        visible = self._live and self.row.get("broadcast") != "replay"
+        self.status_dot.setVisible(visible)
+        self.status_dot.setStyleSheet(
+            "background:#40d49f;border-radius:4px;" if visible and on
+            else "background:transparent;border-radius:4px;")
 
     def update_record(self, row: dict):
         self.row = dict(row)
@@ -209,7 +216,7 @@ class FootballCardWidget(QFrame):
         if row.get("broadcast") == "replay":
             self.status.setText("REPRISE")
         elif self._live:
-            self.status.setText(("● " if self._pulse_on else "  ") + self._live_text)
+            self.status.setText(self._live_text)
         elif state == "finished":
             self.status.setText("ENCERRADO")
         elif state == "stale":
@@ -233,3 +240,4 @@ class FootballCardWidget(QFrame):
         self._set_icon(self.league_icon, row.get("competition_badge") or row.get("event_logo") or "", "league")
         self._set_icon(self.home_icon, row.get("home_badge") or "", "home")
         self._set_icon(self.away_icon, row.get("away_badge") or "", "away")
+        self.set_pulse(self._pulse_on)
