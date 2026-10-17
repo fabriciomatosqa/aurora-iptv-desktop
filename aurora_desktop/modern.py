@@ -1239,6 +1239,43 @@ class MainWindow(legacy.MainWindow):
                 background:{accent};border:2px solid {panel};
                 border-radius:8px;
             }}
+            QSlider#auroraSeek::handle:horizontal {{
+                width:20px;height:20px;margin:-8px 0;
+                background:transparent;border:0;border-radius:10px;
+            }}
+            QFrame#fullscreenOverlay {{
+                background:transparent;border:0;
+            }}
+            QFrame#fullscreenBottom {{
+                background:qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                   stop:0 rgba(5,21,38,115),stop:.4 rgba(5,21,38,205),
+                   stop:1 rgba(4,15,31,235));
+                border:1px solid rgba(103,220,221,85);
+                border-radius:14px;
+            }}
+            QLabel#fsTitle {{
+                color:#ffffff;font-size:20px;font-weight:800;
+                background:rgba(5,19,34,130);border-radius:9px;
+                padding:10px 14px;
+            }}
+            QFrame#fullscreenOverlay QPushButton {{
+                background:rgba(18,45,65,195);
+                color:#f3fbff;border:1px solid rgba(123,225,226,120);
+                border-radius:11px;padding:10px 14px;
+            }}
+            QFrame#fullscreenOverlay QPushButton:hover {{
+                background:rgba(29,83,102,235);
+                border:1px solid #72eddb;
+            }}
+            QFrame#fullscreenOverlay QSlider::groove:horizontal {{
+                background:rgba(211,232,235,80);height:6px;
+            }}
+            QFrame#fullscreenOverlay QSlider::sub-page:horizontal {{
+                background:#6cebd6;height:6px;
+            }}
+            QFrame#fullscreenOverlay QLabel#playerTime {{
+                color:#d9fbf8;background:rgba(10,37,54,155);
+            }}
             QToolTip {{
                 color:{text};background:{menu};
                 border:1px solid {accent};padding:5px;
@@ -1248,6 +1285,12 @@ class MainWindow(legacy.MainWindow):
         for name, button in self.nav.items():
             button.setIcon(icon_for(name, 24, light=not dark))
         self.favorite.setIcon(icon_for("favorites", 22, light=not dark))
+        self.fullscreen_button.setIcon(icon_for("fullscreen",20,light=not dark))
+        self.fs_top_exit.setIcon(icon_for("exit-fullscreen",20,light=not dark))
+        self.fs_exit.setIcon(icon_for("exit-fullscreen",20,light=not dark))
+        self.fs_favorite.setIcon(icon_for("sparkle",21,light=not dark))
+        self._sync_play_icons()
+        self._sync_volume_icon()
 
     def _on_playlist(self):
         # Selecting a playlist in Configurações should not unexpectedly
