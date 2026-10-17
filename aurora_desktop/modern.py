@@ -1217,7 +1217,7 @@ class MainWindow(legacy.MainWindow):
             self._exit_pip()
         self.player.stop()
         self.playing=None
-        self.selected=None
+        # Preserve the selected catalogue row so its synopsis becomes visible.
         self.video_stage.setCurrentWidget(self.player_splash)
         self._update_idle_synopsis()
         self.status.setText("Player fechado. Escolha outro conteúdo.")
@@ -1511,10 +1511,18 @@ class MainWindow(legacy.MainWindow):
         super()._favorite()
         self._sync_favorite_controls()
 
+    def _media_status(self, status):
+        super()._media_status(status)
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            # Playback completed, no video needs to occupy the preview area.
+            self.playing=None
+            self._update_idle_synopsis()
+
     def _player_error(self, error, error_string):
         super()._player_error(error,error_string)
         if error != QMediaPlayer.Error.NoError:
-            self.video_stage.setCurrentWidget(self.player_splash)
+            self.playing=None
+            self._update_idle_synopsis()
 
     def _theme_apply(self):
         # Replace, NEVER concatenate, stylesheets: the previous implementation
@@ -2074,6 +2082,7 @@ class MainWindow(legacy.MainWindow):
         self.offset = 0
         self._football_card_widgets.clear()
         if not getattr(self,"playing",None):
+            self.selected=None
             self._update_idle_synopsis(None)
         self.football_refresh.setVisible(self.mode == "football")
         self.guide_busy.setVisible(self.mode == "football" and bool(
