@@ -327,10 +327,33 @@ class Library:
                     AND NOT EXISTS (SELECT 1 FROM staging active
                                     WHERE active.key=i.key)
                     GROUP BY s.key HAVING COUNT(*)=1""",(playlist_id,))
+                # First upgrade from an older Desktop may have no xui_id
+                # column data. Exact *unique* group+title can bootstrap IDs;
+                # never guess if either snapshot contains duplicate titles.
+                db.execute("""CREATE TEMP TABLE unique_old_titles AS
+                    SELECT group_name,title,MIN(key) AS key FROM items
+                    WHERE playlist_id=? AND xui_id=''
+                    GROUP BY group_name,title HAVING COUNT(*)=1""",(playlist_id,))
+                db.execute("""CREATE UNIQUE INDEX idx_old_titles
+                    ON unique_old_titles(group_name,title)""")
+                db.execute("""CREATE TEMP TABLE unique_new_titles AS
+                    SELECT group_name,title,MIN(key) AS key FROM staging
+                    GROUP BY group_name,title HAVING COUNT(*)=1""")
+                db.execute("""INSERT INTO key_remaps (incoming_key,stable_key)
+                    SELECT s.key,i.key FROM unique_new_titles s
+                    JOIN unique_old_titles i
+                    ON i.group_name=s.group_name AND i.title=s.title
+                    WHERE s.key<>i.key
+                    AND s.key NOT IN (SELECT incoming_key FROM key_remaps)
+                    AND i.key NOT IN (SELECT key FROM staging)
+                    AND i.key NOT IN (SELECT stable_key FROM key_remaps)""")
                 db.execute("""UPDATE staging SET key=(
                     SELECT m.stable_key FROM key_remaps m
                     WHERE m.incoming_key=staging.key)
                     WHERE key IN (SELECT incoming_key FROM key_remaps)""")
+                matched_count = db.execute("""SELECT COUNT(*) FROM staging s
+                    JOIN items i ON i.playlist_id=s.playlist_id AND i.key=s.key
+                    WHERE s.playlist_id=?""",(playlist_id,)).fetchone()[0]
             if not merge:
                 db.execute('DELETE FROM items WHERE playlist_id=?', (playlist_id,))
             db.execute('''INSERT INTO items
@@ -363,11 +386,18 @@ class Library:
             # A nearly complete refresh is safe to reconcile. A truncated
             # remote response must never erase a healthy offline library.
             if merge:
-                if old_count and total >= 50 and total * 100 >= old_count * 97:
+                if (old_count and total>=50 and
+                        total*100>=old_count*97 and
+                        matched_count*100>=min(total,old_count)*80):
                     db.execute("""DELETE FROM items WHERE playlist_id=?
                         AND NOT EXISTS (SELECT 1 FROM staging s
-                                        WHERE s.playlist_id=items.playlist_id
-                                        AND s.key=items.key)""",(playlist_id,))
+                            WHERE s.playlist_id=items.playlist_id AND s.key=items.key)
+                        AND NOT EXISTS (SELECT 1 FROM favorites f
+                            WHERE f.playlist_id=items.playlist_id AND
+                              (f.key=items.key OR f.key='item:'||items.key))
+                        AND NOT EXISTS (SELECT 1 FROM progress p
+                            WHERE p.playlist_id=items.playlist_id
+                            AND p.key=items.key)""",(playlist_id,))
             db.execute('UPDATE playlists SET updated_at=CURRENT_TIMESTAMP WHERE id=?', (playlist_id,))
             db.commit()
             return total
