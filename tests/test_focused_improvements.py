@@ -135,3 +135,82 @@ def test_synopsis_fallback_and_date_format_are_grounded():
     assert "Canal do jogo" in label
     assert "0 X 0" not in label
     assert "AO VIVO" not in label
+
+
+def test_ui_search_preserves_current_football_and_film_category(tmp_path, monkeypatch):
+    """Typing a query must not silently change the selected championship/genre."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    app=QApplication.instance() or QApplication([])
+    win=MainWindow()
+    source=tmp_path/"browse.m3u"
+    source.write_text(
+        '#EXTM3U\n'
+        '#EXTINF:-1 group-title="Ao vivo",Canal Esportivo\n'
+        'https://example.com/live/channel.ts\n'
+        '#EXTINF:-1 group-title="Filmes | Terror",Um Filme\n'
+        'https://example.com/vod/film.mp4\n',encoding="utf-8")
+    pid=win.library.add_playlist("Teste de filtros",str(source))
+    win.library.import_playlist(pid)
+    win._indexed.add(pid)
+    win._auto_guide_attempted.add(pid)
+    win._reload_playlists(pid)
+    win.show()
+    app.processEvents()
+    try:
+        win.navigate("football")
+        football_calls=[]
+        def track_football(pid, category, search="", **kwargs):
+            football_calls.append((category,search))
+            return []
+        monkeypatch.setattr(win.library, "football", track_football)
+        win.selected_category="Brasileirão"
+        win.search.blockSignals(True)
+        win.search.setText("Fluminense")
+        win.search.blockSignals(False)
+        win._load_items(reset=True)
+        assert football_calls[-1]==("Brasileirão","Fluminense")
+
+        win.navigate("movie")
+        movie_calls=[]
+        def track_movie(pid, kind, category, search="", **kwargs):
+            movie_calls.append((kind,category,search))
+            return []
+        monkeypatch.setattr(win.library, "browse", track_movie)
+        win.selected_category="Terror"
+        win.search.blockSignals(True)
+        win.search.setText("Vampiro")
+        win.search.blockSignals(False)
+        win._load_items(reset=True)
+        assert movie_calls[-1]==("movie","Terror","Vampiro")
+    finally:
+        win.close()
+
+
+def test_all_player_and_epg_icons_are_svg_and_settings_have_correct_gear(tmp_path,monkeypatch):
+    """Menu, player and EPG use the same SVG path registry on both themes."""
+    from aurora_desktop.svg_icons import PATHS, svg_icon_for
+    expected={"play","pause","volume","mute","fullscreen","exit-fullscreen",
+              "favorites","settings","refresh","sparkle"}
+    assert expected.issubset(PATHS)
+    app=QApplication.instance() or QApplication([])
+    monkeypatch.setenv("LOCALAPPDATA",str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME",str(tmp_path))
+    win=MainWindow()
+    win.show()
+    app.processEvents()
+    try:
+        for button in (win.play,win.favorite,win.fs_favorite,win.fs_play,
+                       win.volume_button,win.fullscreen_button,
+                       win.config_epg_button,win.update_epg_button):
+            assert not button.icon().isNull()
+        for theme in (False,True):
+            for name in expected:
+                assert not svg_icon_for(name,24,light=theme).isNull()
+        win.navigate("settings")
+        win.groups.setCurrentRow(3)
+        app.processEvents()
+        assert win.config_epg_button.isVisible()
+        assert win.update_epg_button.isVisible()
+    finally:
+        win.close()
