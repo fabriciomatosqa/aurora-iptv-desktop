@@ -78,6 +78,7 @@ def test_football_page_without_guide_does_not_list_channels_as_matches(tmp_path,
         assert "Nenhuma partida" in win.page.text()
         assert win.football_refresh.isVisible()
         assert win.football_refresh.height()<=40
+        assert not win.guide_busy.isVisible()
         assert not win.action.isVisible()
         assert not win.second_action.isVisible()
         win.navigate("settings")
@@ -212,5 +213,7 @@ def test_all_player_and_epg_icons_are_svg_and_settings_have_correct_gear(tmp_pat
         app.processEvents()
         assert win.config_epg_button.isVisible()
         assert win.update_epg_button.isVisible()
+        assert not win.guide_busy.isVisible()
+        assert win.guide_busy.minimum()==0 and win.guide_busy.maximum()==0
     finally:
         win.close()
