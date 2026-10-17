@@ -76,7 +76,7 @@ def classify_content(name: str, group: str, url: str, type_hint: str = "",
         return "series"
     if any(s in path for s in ("/movie/", "/movies/", "/vod/", "/film/")):
         return "movie"
-    if tvg_id.strip():
+    if (tvg_id or "").strip():
         return "live"
 
     if provider_kind in ("live", "movie", "series"):
@@ -94,7 +94,7 @@ def classify_content(name: str, group: str, url: str, type_hint: str = "",
         return "movie"
     if VOD_FILE.search(url):
         return "movie"
-    if re.search(r"\\.(?:ts|m3u8)(?:$|[?#])", url, re.I):
+    if re.search(r"\.(?:ts|m3u8)(?:$|[?#])", url, re.I):
         return "live"
     return "uncategorized"
 
