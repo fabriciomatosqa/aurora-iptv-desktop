@@ -1,23 +1,20 @@
-# AURORA IPTV Desktop 0.6.0-beta.13
+# AURORA IPTV Desktop 0.6.0-beta.14
 
-## Correções prioritárias
-- Corrige a regressão de ícones SVG deformados na beta.12: o QtSvg agora desenha em um retângulo lógico explicitamente dimensionado, evitando o corte em telas de alta densidade. Testes verificam os pixels renderizados, não apenas a validade do SVG.
-- Devolve os ícones de Início, TV, Filmes, Séries, Futebol, Favoritos e Configurações ao tamanho correto. Botões menores do EPG também foram corrigidos.
-- Botão compacto Atualizar no cabeçalho da agenda. Configuração da fonte EPG permanece na área Configurações.
+## Acabamento visual e SVGs
+- Todos os ícones presentes na interface moderna, inclusive controles de play/pause, favoritos, áudio, tela cheia, banner e placeholders, usam o renderizador QtSvg com correção HiDPI introduzida na beta.13.
+- A opção Configurar EPG usa engrenagem, com paleta adequada aos temas claro e escuro.
+- A barra de progresso compacta no cabeçalho da agenda comunica a atualização do guia sem inventar porcentagens. Ambos os botões de atualização ficam desabilitados durante a consulta.
 
-## Futebol
-- Exige partida com dois adversários identificados; não usa a lista genérica de canais esportivos como agenda. Os canais continuam disponíveis em Ao vivo.
-- Categorias FIFA, Brasileirão, Libertadores, Sul-Americana e ligas estrangeiras que de fato existam no XMLTV, sem abas vazias.
-- Cards com competição, times, dia da semana e mês por extenso, horário local HH:mm, canal e indicador REPRISE quando informado.
-- Procura por nome de equipe, mantendo filtro de campeonato. Atualização do XMLTV não interrompe a reprodução e procura preservar busca, categoria e rolagem.
-- Quando a fonte XMLTV oferece uma imagem de evento, ela pode ser exibida. Não há imagens fictícias nem certeza indevida de ser o escudo oficial.
+## Futebol e busca
+- Corrige o problema em que a busca removia o filtro do campeonato selecionado. A mesma correção se aplica a gêneros de Filmes e Séries.
+- Mostra um ponto verde pulsante somente durante a faixa de horário de transmissões sinalizadas como ao vivo pelo XMLTV; não afirma que o vídeo está transmitindo efetivamente a partida.
+- Preserva as correções da beta.13: confrontos reais associados a canais, sem canais genéricos como partidas; campeonatos disponíveis, busca por time, reprises quando identificadas, horário local HH:mm, retorno de navegação e sinopses quando há metadados.
 
-## Navegação e sinopses
-- Registra contexto de navegação antes de entrar em episódios, podendo voltar à categoria, pesquisa e rolagem de origem.
-- Aceita descrição/sinopse em tags de M3U: `description`, `tvg-description`, `synopsis`, `plot`, `summary`, entre outras.
-- Armazena sinopse no SQLite com migração segura; mostra texto em janela rolável ou "Sinopse não disponível."
-- Preserva playlists, favoritos, progresso, player em tela cheia e atualização automática Windows/Debian.
+## Qualidade e compatibilidade
+- Testes de regressão específicos para filtros combinados, SVGs, configuração do EPG, carregamento e indicação de ao vivo.
+- Validação por Pull Request em Windows e Linux, sem publicação automática antes da integração.
+- Mantém playlists M3U/M3U8, banco SQLite, favoritos, progresso, continuar assistindo, player em tela cheia e atualização online.
 
-**Limitação conhecida:** placares/minutos em tempo real e logos oficiais de equipes/competições só poderão ser fornecidos por uma API esportiva confiável/autorizada com identificadores corretos. Ainda não estão integrados nesta versão; não são simulados.
+**Limitações conhecidas:** placares e minutos reais, confirmação independente de que a transmissão do canal está ao vivo, e os escudos/logotipos oficiais de equipes e campeonatos continuam dependentes de integração com fonte esportiva licenciada e identificadores exatos. Esses dados não são inventados. A imagem fornecida pelo próprio XMLTV pode continuar a ser mostrada.
 
-**Atualização:** o app beta.12 deve reconhecer a beta.13 através do sistema de Atualizações existente. Após instalar, teste os SVGs, os botões EPG, o retorno das séries e a janela de sinopse.
+**Atualização:** a partir da beta.13, use Configurações → Atualizações quando a beta.14 estiver publicada. A instalação mantém o banco de dados do usuário.
