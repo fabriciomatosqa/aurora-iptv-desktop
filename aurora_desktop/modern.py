@@ -11,7 +11,7 @@ import sys
 from PySide6.QtCore import Qt, QSize, QRectF, QPoint, QEvent, QTimer, QUrl, Signal, QObject, QThread, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QBrush, QColor, QFont, QGradient, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QKeySequence, QShortcut
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QMediaMetaData
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
@@ -846,7 +846,43 @@ class MainWindow(legacy.MainWindow):
         self.fs_pip.setIcon(svg_icon_for("pip", 20))
         self.fs_pip.clicked.connect(self._toggle_pip)
         top_row.addWidget(self.fs_pip)
+        self.fs_aspect = QPushButton("Proporção")
+        self.fs_aspect.setIcon(svg_icon_for("aspect", 20))
+        self.fs_aspect_menu = QMenu(self.fs_aspect)
+        self._aspect_modes = (
+            ("Original / Ajustar à tela", Qt.AspectRatioMode.KeepAspectRatio),
+            ("Preencher sem distorção (corta bordas)", Qt.AspectRatioMode.KeepAspectRatioByExpanding),
+            ("Esticar (distorce a imagem)", Qt.AspectRatioMode.IgnoreAspectRatio),
+        )
+        for label, mode in self._aspect_modes:
+            item = self.fs_aspect_menu.addAction(label)
+            item.setCheckable(True)
+            item.triggered.connect(lambda checked=False, m=mode: self._set_video_aspect(m))
+        self.fs_aspect.setMenu(self.fs_aspect_menu)
+        top_row.addWidget(self.fs_aspect)
         hud.addLayout(top_row)
+        self.fs_loading = QLabel("Carregando vídeo...")
+        self.fs_loading.setObjectName("fsLoading")
+        self.fs_loading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.fs_loading.hide()
+        hud.addWidget(self.fs_loading,1)
+        center = QHBoxLayout()
+        center.addStretch()
+        self.fs_rewind = QPushButton("−10 s")
+        self.fs_rewind.setIcon(svg_icon_for("backward",26))
+        self.fs_rewind.clicked.connect(lambda: self._seek_relative(-10_000))
+        center.addWidget(self.fs_rewind)
+        self.fs_play_center = QPushButton("Pausar / Reproduzir")
+        self.fs_play_center.setIcon(svg_icon_for("pause",36))
+        self.fs_play_center.setIconSize(QSize(36,36))
+        self.fs_play_center.clicked.connect(self._toggle_play)
+        center.addWidget(self.fs_play_center)
+        self.fs_forward = QPushButton("+10 s")
+        self.fs_forward.setIcon(svg_icon_for("forward",26))
+        self.fs_forward.clicked.connect(lambda: self._seek_relative(10_000))
+        center.addWidget(self.fs_forward)
+        center.addStretch()
+        hud.addLayout(center)
         hud.addStretch(1)
 
         self.fs_bottom=QFrame(self.fs_overlay)
@@ -876,6 +912,26 @@ class MainWindow(legacy.MainWindow):
         self.fs_favorite.setIconSize(QSize(21,21))
         self.fs_favorite.clicked.connect(self._favorite)
         buttons.addWidget(self.fs_favorite)
+        self.fs_audio = QPushButton("Áudio")
+        self.fs_audio.setIcon(svg_icon_for("audio",20))
+        self.fs_audio_menu = QMenu(self.fs_audio)
+        self.fs_audio_menu.aboutToShow.connect(self._refresh_audio_menu)
+        self.fs_audio.setMenu(self.fs_audio_menu)
+        buttons.addWidget(self.fs_audio)
+        self.fs_subtitles = QPushButton("Legendas")
+        self.fs_subtitles.setIcon(svg_icon_for("subtitles",20))
+        self.fs_subtitles_menu = QMenu(self.fs_subtitles)
+        self.fs_subtitles_menu.aboutToShow.connect(self._refresh_subtitle_menu)
+        self.fs_subtitles.setMenu(self.fs_subtitles_menu)
+        buttons.addWidget(self.fs_subtitles)
+        self.fs_speed = QPushButton("1×")
+        self.fs_speed.setIcon(svg_icon_for("speed",20))
+        self.fs_speed_menu = QMenu(self.fs_speed)
+        for rate in (0.5, 0.75, 1., 1.25, 1.5, 2.):
+            action = self.fs_speed_menu.addAction(f"{rate:g}×")
+            action.triggered.connect(lambda checked=False, r=rate: self._set_playback_speed(r))
+        self.fs_speed.setMenu(self.fs_speed_menu)
+        buttons.addWidget(self.fs_speed)
         buttons.addStretch(1)
         self.fs_volume_icon=QPushButton()
         self.fs_volume_icon.setIcon(svg_icon_for("volume",22))
@@ -917,6 +973,9 @@ class MainWindow(legacy.MainWindow):
         self.player.positionChanged.connect(self._sync_fullscreen_position)
         self.player.durationChanged.connect(self._sync_fullscreen_duration)
         self.player.playbackStateChanged.connect(self._sync_play_icons)
+        self.player.tracksChanged.connect(self._update_track_buttons)
+        self.player.seekableChanged.connect(lambda *_: self._update_seek_buttons())
+        self.player.mediaStatusChanged.connect(self._update_loading)
         self.status = QLabel("Selecione sua playlist para começar.")
         self.status.setObjectName("statusInfo")
         self.status.setWordWrap(True)
@@ -933,7 +992,14 @@ class MainWindow(legacy.MainWindow):
         self.exit_fullscreen_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.enter_fullscreen_shortcut = QShortcut(QKeySequence("F11"),self,self._toggle_video_fullscreen)
         self.enter_fullscreen_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._advanced_keys = []
+        for key in ("F", "M", "Up", "Down", "Left", "Right"):
+            shortcut = QShortcut(QKeySequence(key),self)
+            shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            shortcut.activated.connect(lambda k=key: self._player_key(k))
+            self._advanced_keys.append(shortcut)
         self._video_fullscreen = False
+        self._video_aspect_mode = Qt.AspectRatioMode.KeepAspectRatio
         self._pip_window = None
         self._fullscreen_was_maximized = False
         self._saved_panel_sizes = None
@@ -1002,7 +1068,10 @@ class MainWindow(legacy.MainWindow):
     def _begin_fullscreen_fade(self):
         if not self._video_fullscreen:
             return
-        if self.fs_seek.isSliderDown() or self.fs_volume.isSliderDown():
+        if (self.fs_seek.isSliderDown() or self.fs_volume.isSliderDown()
+                or QApplication.activePopupWidget() is not None
+                or self.fs_audio_menu.isVisible() or self.fs_subtitles_menu.isVisible()
+                or self.fs_aspect_menu.isVisible() or self.fs_speed_menu.isVisible()):
             self._fs_idle.start(3000)
             return
         self._fs_fade.stop()
@@ -1023,9 +1092,11 @@ class MainWindow(legacy.MainWindow):
         self.play.setIcon(svg_icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
         self.fs_play.setText(caption)
         self.fs_play.setIcon(svg_icon_for(icon,24,light=not getattr(self,"_theme_dark",True)))
+        self.fs_play_center.setIcon(svg_icon_for(icon,36,light=not getattr(self,"_theme_dark",True)))
 
     def _sync_fullscreen_duration(self,duration):
         self.fs_seek.setRange(0,max(0,duration))
+        self._update_seek_buttons()
         self._sync_fullscreen_position(self.player.position())
 
     def _sync_fullscreen_position(self,position):
@@ -1097,7 +1168,7 @@ class MainWindow(legacy.MainWindow):
         layout=self.player_panel.layout()
         self._saved_player_margin=layout.contentsMargins()
         self._saved_player_spacing=layout.spacing()
-        self._saved_video_mode=self.video.aspectRatioMode()
+        self._saved_video_mode=self._video_aspect_mode
         self.setMinimumSize(0,0)
         self.player_panel.setMinimumWidth(0)
         self.player_panel.setStyleSheet(
@@ -1120,12 +1191,14 @@ class MainWindow(legacy.MainWindow):
         self.outer_layout.setSpacing(0)
         # Fill the display, including ultrawide screens. This crops the edges
         # of 16:9 content on 21:9 monitors instead of drawing black pillarboxes.
-        self.video.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatioByExpanding)
+        self.video.setAspectRatioMode(self._video_aspect_mode)
         self.fs_content_label.setText(
             self.playing.get("title","AURORA IPTV") if self.playing else "AURORA IPTV")
         self._sync_play_icons()
         self._sync_favorite_controls()
         self._sync_volume_icon()
+        self._update_seek_buttons()
+        self._update_track_buttons()
         self.showFullScreen()
         self._show_fullscreen_overlay()
         self.video.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -1179,6 +1252,8 @@ class MainWindow(legacy.MainWindow):
         super()._start(item)
         self._sync_play_icons()
         self._sync_favorite_controls()
+        self._update_seek_buttons()
+        self._update_track_buttons()
         if item.get("url"):
             if self._pip_window is not None:
                 self._pip_window.set_title(item.get("title","AURORA IPTV"))
