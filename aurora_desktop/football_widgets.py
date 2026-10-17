@@ -183,8 +183,8 @@ class FootballCardWidget(QFrame):
 
     def set_pulse(self, on: bool):
         self._pulse_on = on
-        if self._live:
-            self.status.setText("● AO VIVO" if on else "  AO VIVO")
+        if self._live and self.row.get("broadcast") != "replay":
+            self.status.setText(("● " if on else "  ") + self._live_text)
 
     def update_record(self, row: dict):
         self.row = dict(row)
@@ -196,13 +196,22 @@ class FootballCardWidget(QFrame):
         self.score.setText(f"{home}  X  {away}" if home is not None and away is not None else "X")
         if state in ("live", "halftime") and time.time() - row.get("score_checked", 0) > 125:
             state = "stale"
-        self._live = state in ("live", "halftime")
-        if self._live:
-            self.status.setText("● AO VIVO" if self._pulse_on else "  AO VIVO")
+        # A football match in progress does NOT prove the chosen channel
+        # is transmitting it. Only XMLTV can assert the programme slot.
+        try:
+            begin = datetime.fromisoformat(row.get("start", "")).astimezone()
+            end = datetime.fromisoformat(row.get("end", "")).astimezone()
+            on_air_epg = row.get("broadcast") == "live" and begin <= datetime.now().astimezone() < end
+        except (ValueError, TypeError):
+            on_air_epg = False
+        self._live = state in ("live", "halftime") or on_air_epg
+        self._live_text = "JOGO AO VIVO" if state in ("live", "halftime") else "AO VIVO · EPG"
+        if row.get("broadcast") == "replay":
+            self.status.setText("REPRISE")
+        elif self._live:
+            self.status.setText(("● " if self._pulse_on else "  ") + self._live_text)
         elif state == "finished":
             self.status.setText("ENCERRADO")
-        elif row.get("broadcast") == "replay":
-            self.status.setText("REPRISE")
         elif state == "stale":
             self.status.setText("PLACAR DESATUALIZADO")
         else:
@@ -215,10 +224,9 @@ class FootballCardWidget(QFrame):
             date = f"{days[d.weekday()]} - {d.day} de {months[d.month-1]} · {d:%H:%M}"
         except (TypeError, ValueError):
             date = "Data indisponível"
-        if self._live:
-            clock = row.get("score_clock", "")
-            live_date = "AO VIVO" + (f" · {clock}" if clock else "")
-            self.transmission.setText("Transmissão: " + live_date)
+        if on_air_epg and row.get("broadcast") != "replay":
+            clock = row.get("score_clock", "") if state in ("live", "halftime") else ""
+            self.transmission.setText("Transmissão: AO VIVO · conforme EPG" + (f" · {clock}" if clock else ""))
         else:
             self.transmission.setText(("REPRISE · " if row.get("broadcast") == "replay" else "Transmissão: ") + date)
         self.channel.setText("Canal: " + (row.get("channel_title") or "Não identificado"))
