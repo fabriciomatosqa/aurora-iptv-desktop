@@ -81,6 +81,6 @@ def test_fullscreen_has_real_controls_and_only_supported_aspect_choices(tmp_path
         assert not win.fs_subtitles.isVisible()
         assert not win.fs_forward.isEnabled()  # VOD seeking not available
         assert not win.fs_rewind.isEnabled()
-        assert len(win._advanced_keys)==6
+        assert len(win._advanced_keys)==2  # F/M global; arrows only in fullscreen
     finally:
         win.close()
