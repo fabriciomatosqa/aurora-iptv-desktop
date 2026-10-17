@@ -1,4 +1,15 @@
-# AURORA IPTV Desktop v0.6.0-beta.15 (candidata)
+# AURORA IPTV Desktop v0.6.0-171026.01
+
+Esta é a primeira versão que retoma o padrão **v0.6.0-DDMMAA.NN**.
+`171026` significa 17/10/2026 e `.01` é a primeira publicação do dia.
+No mesmo dia as próximas versões serão `.02`, `.03` etc; amanhã a sequência recomeça em `.01`.
+
+O atualizador preserva as verificações GitHub Releases, o botão ao lado da versão,
+a verificação SHA-256 e a confirmação da instalação. A beta.15 publicada antes
+desta versão oferece a ponte de compatibilidade para as instalações beta.14,
+que só reconheciam tags `beta.N`. No Linux, o pacote de atualização tem
+o nome `aurora-iptv_0.6.0-date20261017.01_amd64.deb`: a data ISO no
+pacote é necessária para garantir a ordem das versões no sistema Debian.
 
 ## Banner ultrawide
 - O banner não usa mais crop indiscriminado para cobrir monitores largos. Preserva a imagem ao centro e reflete suas laterais quando há espaço extra, sem mudar sua proporção.
