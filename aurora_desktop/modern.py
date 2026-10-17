@@ -438,9 +438,20 @@ class MainWindow(legacy.MainWindow):
         content_layout = QVBoxLayout(contents_panel)
         content_layout.setContentsMargins(16,17,16,14)
         content_layout.setSpacing(10)
+        heading_row = QHBoxLayout()
+        heading_row.setSpacing(8)
         self.heading = QLabel("Explorar")
         self.heading.setObjectName("heading")
-        content_layout.addWidget(self.heading)
+        heading_row.addWidget(self.heading, 1)
+        self.football_refresh = QPushButton("Atualizar")
+        self.football_refresh.setObjectName("footballRefresh")
+        self.football_refresh.setIcon(svg_icon_for("refresh", 22))
+        self.football_refresh.setIconSize(QSize(20, 20))
+        self.football_refresh.setToolTip("Atualizar agenda de partidas via XMLTV")
+        self.football_refresh.clicked.connect(self._update_guide)
+        self.football_refresh.setFixedHeight(36)
+        heading_row.addWidget(self.football_refresh, 0)
+        content_layout.addLayout(heading_row)
         self.subtitle = QLabel("")
         self.subtitle.setObjectName("muted")
         self.subtitle.setWordWrap(True)
@@ -1238,6 +1249,17 @@ class MainWindow(legacy.MainWindow):
                 border-radius:11px;
                 font-size:14px;font-weight:650;
             }}
+            QPushButton#footballRefresh {{
+                padding:5px 12px;
+                min-height:24px;
+                border-radius:9px;
+                background:{inner};
+                border:1px solid {border};
+                font-size:12px;
+            }}
+            QPushButton#footballRefresh:hover {{
+                background:{hover};border:1px solid {accent};
+            }}
             QPushButton#navButton:hover {{
                 background:{hover};
                 border-color:{border};
@@ -1497,6 +1519,9 @@ class MainWindow(legacy.MainWindow):
         self.groups_title.setText("CLASSIFICAÇÃO" if self.mode != "football" else "CAMPEONATOS")
         self.groups_hint.setText("Escolha uma categoria" if self.mode not in ("home","settings") else "Sua biblioteca")
         self.search.setVisible(self.mode not in ("settings","episodes"))
+        self.search.setPlaceholderText(
+            "Buscar partidas por nome do time..." if self.mode == "football"
+            else "Buscar canais, filmes, séries...")
         self.previous.setVisible(self.mode == "episodes")
         self._show_settings_section()
         self.covers.reset()
@@ -1505,6 +1530,9 @@ class MainWindow(legacy.MainWindow):
         self.groups.blockSignals(False)
         self.selected_category = None
         self.offset = 0
+        self.football_refresh.setVisible(self.mode == "football")
+        self.action.setVisible(self.mode not in ("settings", "football"))
+        self.second_action.setVisible(self.mode not in ("settings", "football"))
         self.action.setText("Adicionar URL M3U" if self.mode == "settings" or self.playlist_id is None
                             else "Atualizar EPG Futebol" if self.mode == "football"
                             else "Atualizar playlist")
@@ -1514,8 +1542,10 @@ class MainWindow(legacy.MainWindow):
                                    else "Configurar EPG" if self.mode == "football"
                                    else "Gerenciar playlists")
         self.second_action.setIcon(svg_icon_for("upload" if self.mode == "settings" else
-                                                "guide" if self.mode == "football" else "manage",
+                                                "settings" if self.mode == "football" else "manage",
                                                 light=not getattr(self,"_theme_dark",True)))
+        self.football_refresh.setIcon(svg_icon_for("refresh",20,
+                                  light=not getattr(self,"_theme_dark",True)))
         if self.mode == "settings":
             self.subtitle.setText("Selecione a biblioteca ativa, adicione listas ou gerencie as existentes. Seus favoritos e progresso são preservados.")
         elif self.mode == "football":
@@ -1606,21 +1636,21 @@ class MainWindow(legacy.MainWindow):
             else:
                 if self.mode == "football":
                     rows = self.library.football(self.playlist_id,None if query else self.selected_category,query,limit=61,offset=self.offset)
-                    # Fallback to real sports channels when XMLTV gives no events.
-                    if not rows and not self.library.football_categories(self.playlist_id):
-                        rows = self.library.sport_channels(self.playlist_id,query,limit=160)
-                        self._exhausted = True
-                        self.page.setText("Canais esportivos · configure o EPG para visualizar os jogos")
-                    else:
-                        self._exhausted = len(rows) <= 60
+                    # An empty EPG is not a list of fixtures. Sports channels
+                    # remain accessible under Ao vivo; never label channels as matches.
+                    self._exhausted = len(rows) <= 60
+                    if not rows and self.offset == 0:
+                        self.page.setText(
+                            "Nenhuma partida identificada. Os canais continuam disponíveis em Ao vivo.")
                 else:
                     rows = self.library.browse(self.playlist_id,self.mode,None if query else self.selected_category,query,limit=61,offset=self.offset)
                     self._exhausted = len(rows) <= 60
                 self._add_many(rows[:60] if not self._exhausted else rows)
                 self.offset += min(len(rows),60)
-                if self.mode != "football" or self.library.football_categories(self.playlist_id):
-                    self.page.setText(f"{self.offset:,} conteúdos · role para explorar".replace(",", "."))
-            if not self.results.count():
+                if rows:
+                    noun = "partidas" if self.mode == "football" else "conteúdos"
+                    self.page.setText(f"{self.offset:,} {noun} · role para explorar".replace(",", "."))
+            if not self.results.count() and self.mode != "football":
                 self.page.setText("Nenhum conteúdo nesta categoria.")
         finally:
             self._loading_items = False
@@ -1781,6 +1811,8 @@ class MainWindow(legacy.MainWindow):
         thread.finished.connect(thread.deleteLater)
         thread.finished.connect(self._guide_done)
         self.guide_thread,self.guide_worker = thread,worker
+        self.football_refresh.setEnabled(False)
+        self.football_refresh.setText("Atualizando...")
         self.status.setText("Lendo programação do guia XMLTV...")
         thread.start()
 
@@ -1796,6 +1828,8 @@ class MainWindow(legacy.MainWindow):
     def _guide_done(self):
         self.guide_thread = None
         self.guide_worker = None
+        self.football_refresh.setEnabled(True)
+        self.football_refresh.setText("Atualizar")
 
     def _import_active(self):
         if self.thread is None or not self.thread.isRunning():
