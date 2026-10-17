@@ -1,26 +1,22 @@
-# AURORA IPTV Desktop 0.6.0-beta.14
+# AURORA IPTV Desktop 0.6.0-beta.15
 
-## Futebol: placares reais e escudos adaptados do Android
-- Integra consultas assíncronas ao placar público disponibilizado pela ESPN, usando apenas campeonato e data, sem compartilhar URLs de playlists ou credenciais.
-- Atualiza os resultados enquanto a agenda Futebol está visível, com ciclo de 60 segundos e limite de consultas concorrentes; mantém as partidas carregadas, filtros e posição de rolagem.
-- Cruza nome exato das duas equipes, competição e data antes de mostrar placar ou minuto. Partidas com identificação ambígua permanecem sem resultado.
-- Adiciona cards com logotipo de competição, escudos separados de mandante e visitante, placar/tempo quando confirmados, canal de transmissão e horário local.
-- Para seleções, reaproveita quatro URLs de escudos já usadas no Android (Brasil/CBF, Argentina/AFA, EUA/US Soccer, Espanha/RFEF), com identificação FIFA na competição.
-- Mostra o estado do jogo separadamente do estado da transmissão no XMLTV. Nunca afirma que um canal está transmitindo um jogo simplesmente porque ele está acontecendo.
-- Em falhas de conexão ou dados indisponíveis, mantém os dados existentes, preserva o catálogo e informa estados ausentes ou desatualizados, sem inventar jogos.
-- Em Configurações → Guia de futebol, há opção para ativar/desativar as consultas online de placares e imagens esportivas.
+## Banner ultrawide
+- Fundo panorâmico composto: imagem original sem corte central, com extensão atmosférica lateral e gradientes harmonizados. Largura completa sem distorção ou zoom forçado e sem recalcular arquivos durante o resize.
 
-## Interface e regressões
-- Padroniza ícones de vídeo, áudio, fullscreen, Favoritos e navegação no mesmo renderizador SVG HiDPI.
-- Preserva a categoria e o campeonato ao fazer buscas.
-- Padroniza a engrenagem de Configurar EPG, adiciona progresso indeterminado e impede múltiplas atualizações simultâneas.
-- Mantém os ajustes da beta.13: partidas identificadas no XMLTV, reprises sinalizadas, horários HH:mm, navegação por histórico e sinopses quando disponíveis.
+## Reprodução
+- Tela cheia mantém o QMediaPlayer e a saída primária; HUD dividido em comandos superiores, centrais e inferiores, com recolhimento suave entre 3 e 5 segundos.
+- Controles de avançar/voltar 10s apenas para VOD realmente navegável; áudio e legendas apenas com faixas retornadas pelo Qt; velocidade do player sob demanda, indicador de carregamento e atalhos F/M/setas com proteção a campos de texto.
+- Proporção disponível no QVideoWidget: Original/Ajustar à tela, Preencher e Esticar. As proporções fixas 4:3, 16:9, 2:1 e 21:9 **ainda dependem de um renderizador próprio** e não são oferecidas como botões fictícios.
+- Picture-in-Picture abre janela independente, redimensionável, com Always on Top opcional, controles de áudio e retorno. Usa o **mesmo QMediaPlayer**, alterando apenas o alvo de vídeo; o backend Qt pode introduzir uma breve renegociação na troca de superfície em determinados sistemas.
 
-## Testes e distribuição
-- Testes determinísticos para identidade de clubes e seleções, ausência de placares fictícios, fontes HTTPS permitidas, consultas limitadas, privacidade das playlists e atualização dos cards sem perda da seleção.
-- Builds Windows e Linux por GitHub Actions; instaladores são publicados após a integração e somente se os testes dos dois sistemas passarem.
-- Preserva SQLite, múltiplas playlists, favoritos, progresso, player e checagem de atualização.
+## Biblioteca e dados
+- Prioridade: tipo explícito, metadados da categoria do provedor, URL e marcações de episódios, grupo/EPG e somente depois regras genéricas.
+- Entradas ambíguas vão à nova seção “Não classificados”, sem serem apresentadas como TV.
+- Correção manual de tipo pelo menu de contexto, salva por URL na tabela `classification_overrides` e restaurada após reimportação; preserva favoritos, histórico, progresso e arquivos M3U originais.
+- Migração aditiva de classificação v6; processamento por lotes, sem alterar as chaves do conteúdo.
 
-**Condições de uso:** o recurso consulta endpoints públicos utilizados no projeto Android, mas isso não é uma licença de exploração comercial. TheSportsDB exige uma assinatura paga para aplicativos publicados em lojas e uma assinatura não transfere direitos sobre os escudos de terceiros. As marcas/logotipos de clubes, confederações e campeonatos também exigem verificação de direitos antes de vender ou distribuir comercialmente o aplicativo. Veja docs/SPORTS_DATA_SOURCES.md.
+## Verificação e limitações
+- Testes para catálogo sem duplicação, migração, SVG, banner, controle PiP, HUD e compatibilidade de chamadas Qt em GitHub Actions Windows e Linux.
+- A integração e o comportamento final dependem dos codecs, plugins Qt Multimedia, driver de vídeo, gerenciador de janelas e permissões X11/Wayland. A opção “Sempre no topo” não pode sobrepor restrições impostas pelo compositor.
+- A versão publicada não altera o conteúdo nem as credenciais das playlists.
 
-**Limites técnicos:** nenhuma API confirma automaticamente o conteúdo efetivo do stream IPTV. O aviso de transmissão vem do XMLTV; o placar vem do provedor esportivo. Nem toda competição, jogo ou federação dispõe de imagens e resultados verificáveis.
