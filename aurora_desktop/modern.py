@@ -23,7 +23,7 @@ from . import app as legacy
 from .catalog import LibraryV2, guess_xtream_epg
 from .svg_icons import svg_icon_for
 from .pip_player import PiPWindow
-from .sports_data import fetch_score_updates, fixture_key, national_artwork
+from .sports_data import fetch_score_updates, fixture_key, national_artwork, safe_epg_artwork
 from .football_widgets import BadgeLoader, FootballCardWidget
 
 # The original Qt player keeps the same settings, DB path, resuming and playlist management.
@@ -845,9 +845,20 @@ class MainWindow(legacy.MainWindow):
         hud.setContentsMargins(28,22,28,22)
         hud.setSpacing(12)
         top_row=QHBoxLayout()
+        self.fs_content_logo = QLabel()
+        self.fs_content_logo.setFixedSize(40, 40)
+        self.fs_content_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.fs_content_logo.setPixmap(svg_icon_for("live",32).pixmap(QSize(32,32)))
+        top_row.addWidget(self.fs_content_logo)
+        identity=QVBoxLayout()
         self.fs_content_label=QLabel("AURORA IPTV")
         self.fs_content_label.setObjectName("fsTitle")
-        top_row.addWidget(self.fs_content_label,1)
+        self.fs_content_detail=QLabel("")
+        self.fs_content_detail.setObjectName("muted")
+        self.fs_content_detail.setWordWrap(False)
+        identity.addWidget(self.fs_content_label)
+        identity.addWidget(self.fs_content_detail)
+        top_row.addLayout(identity,1)
         self.fs_top_exit=QPushButton("Sair da tela cheia")
         self.fs_top_exit.setIcon(svg_icon_for("exit-fullscreen",20))
         self.fs_top_exit.clicked.connect(self._leave_video_fullscreen)
@@ -963,6 +974,9 @@ class MainWindow(legacy.MainWindow):
         fs_box.addLayout(buttons)
         hud.addWidget(self.fs_bottom)
         self.fs_overlay.hide()
+        self._player_logo_network = QNetworkAccessManager(self)
+        self._player_logo_reply = None
+        self._player_logo_url = ""
 
         self._fs_opacity=QGraphicsOpacityEffect(self.fs_overlay)
         self.fs_overlay.setGraphicsEffect(self._fs_opacity)
@@ -1260,6 +1274,43 @@ class MainWindow(legacy.MainWindow):
         self.fs_favorite.setEnabled(enabled)
         self.fs_favorite.setText(self.favorite.text() if enabled else "Favoritar")
 
+    def _update_fullscreen_identity(self, item):
+        self.fs_content_label.setText(item.get("title") or "AURORA IPTV")
+        detail=(item.get("programme_title") or item.get("epg_programme") or
+                item.get("synopsis") or item.get("channel_title") or "")
+        self.fs_content_detail.setText(str(detail).strip()[:160])
+        self._player_logo_url = safe_epg_artwork(item.get("logo") or "")
+        old=self._player_logo_reply
+        if old is not None and old.isRunning():
+            old.abort()
+        self.fs_content_logo.setPixmap(svg_icon_for(
+            "movie" if item.get("kind") == "movie" else
+            "series" if item.get("kind") == "series" else "live",32).pixmap(QSize(32,32)))
+        if not self._player_logo_url:
+            return
+        req=QNetworkRequest(QUrl(self._player_logo_url))
+        req.setTransferTimeout(7_000)
+        reply=self._player_logo_network.get(req)
+        self._player_logo_reply=reply
+        reply.finished.connect(lambda r=reply,u=self._player_logo_url:self._player_logo_ready(r,u))
+
+    def _player_logo_ready(self, reply, url):
+        try:
+            if url != self._player_logo_url or reply.error():
+                return
+            image=bytes(reply.readAll())
+            if not image or len(image)>1_000_000:
+                return
+            pixmap=QPixmap()
+            if pixmap.loadFromData(image) and not pixmap.isNull():
+                self.fs_content_logo.setPixmap(pixmap.scaled(
+                    38,38,Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation))
+        finally:
+            if self._player_logo_reply is reply:
+                self._player_logo_reply=None
+            reply.deleteLater()
+
     def _toggle_pip(self):
         """Switch the single QMediaPlayer video output to an independent window."""
         if self._pip_window is not None:
@@ -1338,8 +1389,7 @@ class MainWindow(legacy.MainWindow):
         # Fill the display, including ultrawide screens. This crops the edges
         # of 16:9 content on 21:9 monitors instead of drawing black pillarboxes.
         self.video.setAspectRatioMode(self._video_aspect_mode)
-        self.fs_content_label.setText(
-            self.playing.get("title","AURORA IPTV") if self.playing else "AURORA IPTV")
+        self._update_fullscreen_identity(self.playing or {})
         self._sync_play_icons()
         self._sync_favorite_controls()
         self._sync_volume_icon()
@@ -1403,7 +1453,7 @@ class MainWindow(legacy.MainWindow):
         if item.get("url"):
             if self._pip_window is not None:
                 self._pip_window.set_title(item.get("title","AURORA IPTV"))
-            self.fs_content_label.setText(item.get("title","AURORA IPTV"))
+            self._update_fullscreen_identity(item)
             self.player_back.setVisible(True)
             self.synopsis_button.setVisible(item.get("kind") in ("movie","series"))
             self.video.setFocus()
