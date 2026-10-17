@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+import ipaddress
 import json
 import re
 import time
@@ -116,6 +117,31 @@ def safe_artwork(url: str) -> str:
     except (ValueError, TypeError):
         pass
     return ""
+
+
+def safe_epg_artwork(url: str) -> str:
+    """Preserve artwork from trusted playlist XMLTV while rejecting local targets.
+
+    Only displayed locally; URL is never forwarded to score services.
+    """
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+            return ""
+        if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
+            return ""
+        if "." not in host:
+            return ""
+        try:
+            ip = ipaddress.ip_address(host)
+            if not ip.is_global:
+                return ""
+        except ValueError:
+            pass
+        return url
+    except (ValueError, TypeError):
+        return ""
 
 
 def fixture_key(row: dict) -> str:
