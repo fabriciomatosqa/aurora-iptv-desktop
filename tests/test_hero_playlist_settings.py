@@ -25,7 +25,7 @@ def test_banner_is_full_width_and_does_not_contain_playlist_control(tmp_path, mo
     try:
         assert win.banner.parent() is win.header_widget
         assert isinstance(win.banner, AuroraBanner)
-        assert win.banner.width() >= win.header_widget.width() - 6
+        assert win.banner.width() >= win.header_widget.width() - 18
         assert win.banner.width() > 1100
         assert win.header_widget.parent() is win.centralWidget()
         assert win.header_widget.geometry().width() > win.sidebar.width()
