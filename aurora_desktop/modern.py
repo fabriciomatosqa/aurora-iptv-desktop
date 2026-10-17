@@ -422,8 +422,6 @@ class MainWindow(legacy.MainWindow):
         self.playlists.setObjectName("activePlaylistSelector")
         self.playlists.setAccessibleName("Playlist ativa")
         self.playlists.setToolTip("Alternar a playlist ativa do AURORA")
-        self.playlists.setSizePolicy(self.playlists.sizePolicy().horizontalPolicy(),
-                                     self.playlists.sizePolicy().verticalPolicy())
         self.playlists.currentIndexChanged.connect(self._on_playlist)
         playlist_layout.addWidget(self.playlists)
         self.playlist_settings.hide()
@@ -713,6 +711,70 @@ class MainWindow(legacy.MainWindow):
             }}
             QLabel#splashDescription {{
                 color:{muted};font-size:14px;
+            }}
+            QLabel#heroBadge {{
+                color:#aaf9ec;
+                background:rgba(7,40,55,0.64);
+                border:1px solid rgba(102,238,213,0.45);
+                border-radius:9px;
+                font-size:10px;
+                font-weight:750;
+                letter-spacing:1px;
+                padding:5px 10px;
+            }}
+            QLabel#heroVersion {{
+                color:#d7e9f5;
+                background:rgba(6,20,38,0.62);
+                border-radius:8px;
+                font-size:11px;
+                font-weight:650;
+                padding:6px 11px;
+            }}
+            QLabel#heroTitle {{
+                color:#ffffff;
+                font-size:32px;
+                font-weight:850;
+                letter-spacing:1px;
+                background:transparent;
+            }}
+            QLabel#heroSubtitle {{
+                color:#9df7e1;
+                font-size:11px;
+                font-weight:750;
+                letter-spacing:2px;
+                background:transparent;
+            }}
+            QLabel#heroFootnote {{
+                color:#c2d9e4;
+                font-size:10px;
+                letter-spacing:1px;
+                background:transparent;
+            }}
+            QFrame#playlistSettings {{
+                background:{inner};
+                border:1px solid {border};
+                border-radius:13px;
+            }}
+            QFrame#playlistSettings QLabel {{
+                background:transparent;
+                border:none;
+            }}
+            QLabel#settingsTitle {{
+                color:{accent};
+                font-size:12px;
+                font-weight:800;
+                letter-spacing:1px;
+            }}
+            QComboBox#activePlaylistSelector {{
+                background:{panel};
+                border:1px solid {border};
+                border-radius:9px;
+                min-height:24px;
+                padding:10px 12px;
+                font-weight:700;
+            }}
+            QComboBox#activePlaylistSelector:focus {{
+                border:1px solid {accent};
             }}
             QLabel#brand {{
                 font-size:19px;font-weight:800;color:{accent};
