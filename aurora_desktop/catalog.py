@@ -336,7 +336,8 @@ class LibraryV2(Library):
         with self.connect() as db:
             if kind == "series":
                 sql = f"""SELECT series_name AS title,series_name, 'series' AS kind,
-                    MAX(logo) AS logo, MIN(key) AS key,COUNT(*) AS episodes,MIN(category) AS category
+                    MAX(logo) AS logo, MIN(key) AS key,COUNT(*) AS episodes,
+                    MAX(NULLIF(synopsis,'')) AS synopsis,MIN(category) AS category
                     FROM items WHERE {condition}
                     GROUP BY series_name ORDER BY series_name COLLATE NOCASE LIMIT ? OFFSET ?"""
             else:
