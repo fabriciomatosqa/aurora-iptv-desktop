@@ -1,6 +1,18 @@
-# AURORA IPTV — Desktop 0.6.0-beta.10
+# AURORA IPTV — Desktop 0.6.0-beta.11
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
+
+## v0.6.0-beta.11 — player imersivo e topo inspirado no Aurora Utils
+
+- **Tela cheia sem bordas:** a janela inteira vira o player; menus, painéis, margens e barras de ações normais desaparecem. O renderizador de vídeo permanece o mesmo para evitar congelamento da imagem.
+- **Controles em overlay:** barra de progresso, play/pause, favorito, volume e saída da tela cheia ficam sobre o vídeo; não ocupam uma faixa abaixo da imagem.
+- **Ocultação progressiva:** após 3 s sem movimento do mouse os controles começam a desaparecer; aos 5 s ficam totalmente ocultos. Mova o mouse para trazê-los de volta.
+- **Ícones vetoriais:** play, pause (sem “Ⅱ”), alto-falante, expandir/sair e a estrela Aurora nos controles de progresso e volume.
+- **Ultrawide:** na tela cheia o vídeo pode ser ampliado com recorte proporcional para eliminar barras laterais pretas. Ao voltar, recupera a proporção original.
+- **Novo topo AURORA:** referência visual do Aurora Utils, com imagem da aurora de ponta a ponta, logo maior e título em degradê ciano/azul/roxo.
+- **Atalhos:** Esc e F11 saem do modo tela cheia. Nenhuma alteração na base de playlists, favoritos, EPG, atualizador Windows ou atualizador Debian.
+
+Atualize de beta.10 para beta.11 pelo menu **Atualizações**. O aplicativo deve instalar e reabrir normalmente, como antes.
 
 ## v0.6.0-beta.10 — novo topo Aurora integrado
 
