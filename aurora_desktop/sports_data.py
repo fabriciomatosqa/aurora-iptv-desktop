@@ -7,6 +7,7 @@ Artwork rights and provider access must be cleared before commercial distributio
 from __future__ import annotations
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 import json
 import re
@@ -269,12 +270,22 @@ def fetch_score_updates(rows: list[dict], fetch_json=None, *, request_limit: int
     if not groups:
         return {fixture_key(row): national_artwork(row) for row in rows if national_artwork(row)}
     results: list[dict] = []
-    for (slug, day) in sorted(groups, key=lambda key: (key[1] != now.strftime("%Y%m%d"), key[1]))[:max(0, request_limit)]:
-        try:
-            url = f"{ESPN}/{slug}/scoreboard?dates={day}&limit=100"
-            results.extend(parse_scoreboard(getter(url), slug))
-        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
-            continue
+    schedule = sorted(groups, key=lambda key: (key[1] != now.strftime("%Y%m%d"), key[1]))[:max(0, request_limit)]
+
+    def download(slug: str, day: str) -> list[dict]:
+        url = f"{ESPN}/{slug}/scoreboard?dates={day}&limit=100"
+        return parse_scoreboard(getter(url), slug)
+
+    if schedule:
+        # At most three simultaneous requests. A slow ESPN endpoint never
+        # freezes the GUI or keeps a 12-league refresh running for 84 seconds.
+        with ThreadPoolExecutor(max_workers=min(3, len(schedule))) as pool:
+            tasks = [pool.submit(download, slug, day) for slug, day in schedule]
+            for task in as_completed(tasks):
+                try:
+                    results.extend(task.result())
+                except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+                    continue
     updates = {}
     for row in rows:
         artwork = national_artwork(row)
