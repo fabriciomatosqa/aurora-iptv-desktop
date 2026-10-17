@@ -12,6 +12,19 @@ Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Reposit�
 
 **Ainda pendente:** placares/minutos em tempo real e escudos oficiais. Uma integração confiável e com direitos de uso adequados será necessária; não há dados esportivos fictícios.
 
+## v0.6.0-beta.14 — fontes esportivas aproveitadas do Android
+
+- **Placar e minuto de partida:** ESPN consultada fora da interface; atualização enquanto a agenda está aberta (60 s), sem enviar URLs ou credenciais de playlists.
+- **Cards com três imagens:** logotipo da competição e escudos separados das duas equipes, carregados de forma assíncrona com fallback vetorial.
+- **Seleções:** CBF, AFA, US Soccer e RFEF, com referências usadas no Android e logotipo FIFA quando o jogo corresponde a seleções. Outras federações dependem de imagens obtidas e identificadas com segurança.
+- **Sem resultados falsos:** exige identidade confiável de ambas as equipes, campeonato e data. Não inventa 0 X 0, placar, horário ou escudo.
+- **Jogo x transmissão:** placar ao vivo não significa que o canal está transmitindo; a programação do canal continua sendo informada apenas pelo EPG.
+- **Configurações → Guia de futebol:** opção para desativar consultas externas e imagens esportivas.
+- **Regressões resolvidas:** ícones SVG, pesquisa preservando a categoria selecionada, botões compactos e progresso do EPG, histórico e sinopses.
+- Consulte [fontes e condições de uso](docs/SPORTS_DATA_SOURCES.md).
+
+**Atenção para comercialização:** os provedores e titulares dos escudos possuem regras próprias. A TheSportsDB exige plano pago para distribuição nas lojas, e logos de clubes/seleções podem demandar autorização. O código implementado é uma integração técnica beta, não uma licença comercial.
+
 ## v0.6.0-beta.13 — correção SVG, Futebol, histórico e sinopses
 
 - **Correção definitiva dos SVGs incompletos**: o renderizador QtSvg usa agora o viewport lógico explícito no pixmap de alta densidade. O ícone preenche sua área normal em Windows/Linux. Testes percorrem os pixels dos ícones para detectar cortes.
