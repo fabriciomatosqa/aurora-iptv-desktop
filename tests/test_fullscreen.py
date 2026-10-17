@@ -36,7 +36,7 @@ def test_fullscreen_does_not_detach_or_replace_video_output(tmp_path, monkeypatc
         assert not window.player_controls.isVisible()
         assert not window.player_actions.isVisible()
         assert window.player_panel.layout().contentsMargins().left() == 0
-        assert window.video.aspectRatioMode() == Qt.AspectRatioMode.KeepAspectRatioByExpanding
+        assert window.video.aspectRatioMode() == Qt.AspectRatioMode.KeepAspectRatio
         assert window.fs_overlay.geometry() == window.video_stage.rect()
         assert window.exit_fullscreen_shortcut.context() == Qt.ShortcutContext.ApplicationShortcut
         window._leave_video_fullscreen()
