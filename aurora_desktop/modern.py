@@ -1299,6 +1299,7 @@ class MainWindow(legacy.MainWindow):
         window.volume_slider.valueChanged.connect(self.volume_slider.setValue)
         self.volume_slider.valueChanged.connect(window.volume_slider.setValue)
         self._pip_window=window
+        self._apply_aspect_mode()
         # One QMediaPlayer, ONE output at a time, no new stream or audio.
         self.player.setVideoOutput(window.video)
         self.video_stage.setCurrentWidget(self.player_splash)
@@ -1861,6 +1862,15 @@ class MainWindow(legacy.MainWindow):
         self.favorite.setIcon(svg_icon_for("favorites", 22, light=not dark))
         self.fullscreen_button.setIcon(svg_icon_for("fullscreen",20,light=not dark))
         self.fs_top_exit.setIcon(svg_icon_for("exit-fullscreen",20,light=not dark))
+        self.pip_button.setIcon(svg_icon_for("pip",20,light=not dark))
+        self.fs_pip.setIcon(svg_icon_for("pip",20,light=not dark))
+        self.aspect_button.setIcon(svg_icon_for("aspect",20,light=not dark))
+        self.fs_aspect.setIcon(svg_icon_for("aspect",20,light=not dark))
+        self.fs_back_button.setIcon(svg_icon_for("back",20,light=not dark))
+        self.fs_close_button.setIcon(svg_icon_for("close",20,light=not dark))
+        self.fs_rewind.setIcon(svg_icon_for("rewind",25,light=not dark))
+        self.fs_forward.setIcon(svg_icon_for("forward",25,light=not dark))
+        self.subtitle_button.setIcon(svg_icon_for("subtitle",20,light=not dark))
         self.fs_exit.setIcon(svg_icon_for("exit-fullscreen",20,light=not dark))
         self.fs_favorite.setIcon(svg_icon_for("favorites",21,light=not dark))
         self.config_epg_button.setIcon(svg_icon_for("settings",24,light=not dark))
