@@ -466,7 +466,112 @@ class MainWindow(legacy.MainWindow):
         self.playlists.currentIndexChanged.connect(self._on_playlist)
         playlist_layout.addWidget(self.playlists)
         self.playlist_settings.hide()
+        manage_buttons = QVBoxLayout()
+        add_button = QPushButton("Adicionar playlist por URL")
+        add_button.setObjectName("settingsAction")
+        add_button.setIcon(svg_icon_for("add"))
+        add_button.clicked.connect(self._add_url)
+        manage_buttons.addWidget(add_button)
+        file_button = QPushButton("Importar arquivo M3U")
+        file_button.setObjectName("settingsAction")
+        file_button.setIcon(svg_icon_for("upload"))
+        file_button.clicked.connect(self._import_playlist_file)
+        manage_buttons.addWidget(file_button)
+        refresh_button = QPushButton("Atualizar playlist ativa")
+        refresh_button.setObjectName("settingsAction")
+        refresh_button.setIcon(svg_icon_for("refresh"))
+        refresh_button.clicked.connect(self._import_active)
+        manage_buttons.addWidget(refresh_button)
+        playlist_layout.addLayout(manage_buttons)
         content_layout.addWidget(self.playlist_settings)
+
+        self.appearance_settings = QFrame(contents_panel)
+        self.appearance_settings.setObjectName("configCard")
+        appearance_layout = QVBoxLayout(self.appearance_settings)
+        appearance_layout.setContentsMargins(16,15,16,16)
+        appearance_layout.setSpacing(10)
+        appearance_title=QLabel("APARÊNCIA")
+        appearance_title.setObjectName("settingsTitle")
+        appearance_layout.addWidget(appearance_title)
+        description=QLabel("Escolha o visual do AURORA IPTV para todas as telas.")
+        description.setObjectName("muted")
+        description.setWordWrap(True)
+        appearance_layout.addWidget(description)
+        self.theme_select = QComboBox()
+        self.theme_select.setObjectName("themeSelector")
+        for label,value in [
+            ("Conforme o sistema","system"),
+            ("Modo escuro","dark"),
+            ("Modo claro","light")
+        ]:
+            self.theme_select.addItem(label,value)
+        self.theme_select.currentIndexChanged.connect(self._theme_changed)
+        appearance_layout.addWidget(self.theme_select)
+        self.appearance_settings.hide()
+        content_layout.addWidget(self.appearance_settings)
+
+        self.updates_settings = QFrame(contents_panel)
+        self.updates_settings.setObjectName("configCard")
+        updates_layout = QVBoxLayout(self.updates_settings)
+        updates_layout.setContentsMargins(16,15,16,16)
+        updates_layout.setSpacing(10)
+        updates_title=QLabel("ATUALIZAÇÕES")
+        updates_title.setObjectName("settingsTitle")
+        updates_layout.addWidget(updates_title)
+        from . import __version__
+        self.updates_version = QLabel(f"Versão instalada: {__version__}")
+        self.updates_version.setObjectName("muted")
+        updates_layout.addWidget(self.updates_version)
+        updates_layout.addWidget(QLabel("Canal de atualizações"))
+        self.update_channel = QComboBox()
+        self.update_channel.setObjectName("updateChannel")
+        self.update_channel.addItem("Estável", "stable")
+        self.update_channel.addItem("Beta e estável", "beta")
+        channel=self.settings.value("updates/channel","beta")
+        self.update_channel.setCurrentIndex(max(0,self.update_channel.findData(channel)))
+        self.update_channel.currentIndexChanged.connect(self._set_update_channel)
+        updates_layout.addWidget(self.update_channel)
+        self.check_updates_button=QPushButton("Verificar atualizações agora")
+        self.check_updates_button.setObjectName("primary")
+        self.check_updates_button.setIcon(svg_icon_for("update"))
+        self.check_updates_button.clicked.connect(self._check_updates_now)
+        updates_layout.addWidget(self.check_updates_button)
+        note=QLabel("Novas versões continuam sendo verificadas automaticamente. "
+                    "No Windows, a instalação é silenciosa; no Debian pode exigir autorização.")
+        note.setObjectName("muted")
+        note.setWordWrap(True)
+        updates_layout.addWidget(note)
+        self.updates_settings.hide()
+        content_layout.addWidget(self.updates_settings)
+
+        self.epg_settings = QFrame(contents_panel)
+        self.epg_settings.setObjectName("configCard")
+        epg_layout = QVBoxLayout(self.epg_settings)
+        epg_layout.setContentsMargins(16,15,16,16)
+        epg_layout.setSpacing(10)
+        epg_title=QLabel("GUIA DE FUTEBOL / EPG")
+        epg_title.setObjectName("settingsTitle")
+        epg_layout.addWidget(epg_title)
+        epg_text=QLabel("Configure o guia XMLTV ou atualize os próximos jogos.")
+        epg_text.setObjectName("muted")
+        epg_text.setWordWrap(True)
+        epg_layout.addWidget(epg_text)
+        config_epg=QPushButton("Configurar fonte EPG")
+        config_epg.setIcon(svg_icon_for("guide"))
+        config_epg.clicked.connect(self._configure_guide)
+        epg_layout.addWidget(config_epg)
+        update_epg=QPushButton("Atualizar agenda de futebol")
+        update_epg.setIcon(svg_icon_for("refresh"))
+        update_epg.clicked.connect(self._update_guide)
+        epg_layout.addWidget(update_epg)
+        self.epg_settings.hide()
+        content_layout.addWidget(self.epg_settings)
+        self.settings_sections = {
+            "playlists": self.playlist_settings,
+            "appearance": self.appearance_settings,
+            "updates": self.updates_settings,
+            "guide": self.epg_settings,
+        }
 
         self.search = QLineEdit()
         self.search.setPlaceholderText("Buscar canais, filmes, séries...")
@@ -507,15 +612,6 @@ class MainWindow(legacy.MainWindow):
         self.second_action.setIconSize(QSize(23,23))
         self.second_action.clicked.connect(self._second_action)
         content_layout.addWidget(self.second_action)
-        self.theme_select = QComboBox()
-        for label,value in [
-            ("Aparência: Conforme o sistema","system"),
-            ("Aparência: Escuro","dark"),
-            ("Aparência: Claro","light")
-        ]:
-            self.theme_select.addItem(label,value)
-        self.theme_select.currentIndexChanged.connect(self._theme_changed)
-        content_layout.addWidget(self.theme_select)
         panels.addWidget(contents_panel)
 
         player_panel = QFrame()
@@ -1316,6 +1412,48 @@ class MainWindow(legacy.MainWindow):
         if mode == "football" and self.playlist_id is not None:
             self._maybe_load_guide()
 
+    def _set_update_channel(self, index):
+        channel = self.update_channel.itemData(index)
+        if not channel:
+            return
+        controller = getattr(self, "update_controller", None)
+        if controller is not None:
+            controller.set_channel(channel)
+        else:
+            self.settings.setValue("updates/channel", channel)
+            self.settings.remove("updates/last_check")
+
+    def _check_updates_now(self):
+        controller = getattr(self, "update_controller", None)
+        if controller is not None:
+            controller.check(manual=True)
+        else:
+            self.status.setText("O verificador de atualizações ainda não está disponível.")
+
+    def _import_playlist_file(self):
+        # Use the proven local M3U import path in the legacy interface.
+        self._second_action()
+
+    def _show_settings_section(self):
+        active = self.mode == "settings"
+        section = self.selected_category or "playlists"
+        for name, widget in self.settings_sections.items():
+            widget.setVisible(active and name == section)
+        show_list = not active or section == "playlists"
+        self.results.setVisible(show_list)
+        self.page.setVisible(show_list)
+        self.action.setVisible(not active)
+        self.second_action.setVisible(not active)
+        if active:
+            self.theme_select.blockSignals(True)
+            self.theme_select.setCurrentIndex(
+                max(0,self.theme_select.findData(self.settings.value("theme","system"))))
+            self.theme_select.blockSignals(False)
+            self.update_channel.blockSignals(True)
+            self.update_channel.setCurrentIndex(
+                max(0,self.update_channel.findData(self.settings.value("updates/channel","beta"))))
+            self.update_channel.blockSignals(False)
+
     def _search(self):
         self._search_timer.start()
 
@@ -1324,6 +1462,7 @@ class MainWindow(legacy.MainWindow):
             return
         self.selected_category = current.data(Qt.ItemDataRole.UserRole)
         self.offset = 0
+        self._show_settings_section()
         self._load_items(reset=True)
 
     def _refresh(self):
@@ -1338,23 +1477,24 @@ class MainWindow(legacy.MainWindow):
         self.groups_hint.setText("Escolha uma categoria" if self.mode not in ("home","settings") else "Sua biblioteca")
         self.search.setVisible(self.mode not in ("settings","episodes"))
         self.previous.setVisible(self.mode == "episodes")
-        self.theme_select.setVisible(self.mode == "settings")
-        self.playlist_settings.setVisible(self.mode == "settings")
-        self.theme_select.blockSignals(True)
-        self.theme_select.setCurrentIndex(max(0,self.theme_select.findData(self.settings.value("theme","system"))))
-        self.theme_select.blockSignals(False)
+        self._show_settings_section()
         self.covers.reset()
         self.groups.blockSignals(True)
         self.groups.clear()
         self.groups.blockSignals(False)
         self.selected_category = None
         self.offset = 0
-        self.action.setText("＋ Adicionar URL M3U" if self.mode == "settings" or self.playlist_id is None
-                            else "↻ Atualizar EPG Futebol" if self.mode == "football"
-                            else "↻ Atualizar playlist")
-        self.second_action.setText("＋ Importar arquivo local" if self.mode == "settings"
-                                   else "⚙ Configurar EPG" if self.mode == "football"
-                                   else "⚙ Gerenciar playlists")
+        self.action.setText("Adicionar URL M3U" if self.mode == "settings" or self.playlist_id is None
+                            else "Atualizar EPG Futebol" if self.mode == "football"
+                            else "Atualizar playlist")
+        self.action.setIcon(svg_icon_for("add" if self.mode == "settings" or self.playlist_id is None
+                                         else "refresh",light=not getattr(self,"_theme_dark",True)))
+        self.second_action.setText("Importar arquivo local" if self.mode == "settings"
+                                   else "Configurar EPG" if self.mode == "football"
+                                   else "Gerenciar playlists")
+        self.second_action.setIcon(svg_icon_for("upload" if self.mode == "settings" else
+                                                "guide" if self.mode == "football" else "manage",
+                                                light=not getattr(self,"_theme_dark",True)))
         if self.mode == "settings":
             self.subtitle.setText("Selecione a biblioteca ativa, adicione listas ou gerencie as existentes. Seus favoritos e progresso são preservados.")
         elif self.mode == "football":
@@ -1382,7 +1522,8 @@ class MainWindow(legacy.MainWindow):
         elif self.mode == "favorites":
             choices = [("Todos os favoritos",None)]
         elif self.mode == "settings":
-            choices = [("Listas de reprodução",None),("Guia Futebol", "guide")]
+            choices = [("Playlists", "playlists"), ("Aparência", "appearance"),
+                       ("Atualizações", "updates"), ("Guia de futebol", "guide")]
         else:
             choices = [("Nenhuma playlist",None)]
         self.groups.blockSignals(True)
@@ -1393,6 +1534,9 @@ class MainWindow(legacy.MainWindow):
             self.groups.addItem(item)
         self.groups.setCurrentRow(0)
         self.groups.blockSignals(False)
+        if self.mode == "settings":
+            self.selected_category = "playlists"
+        self._show_settings_section()
         self._load_items(reset=True)
 
     def _add_result(self,label,record):
@@ -1420,13 +1564,10 @@ class MainWindow(legacy.MainWindow):
                 return
             query = self.search.text().strip()
             if self.mode == "settings":
-                if self.selected_category == "guide":
-                    url = self.library.get_epg_url(self.playlist_id) if self.playlist_id else ""
-                    self._add_result("Guia configurado" if url else "Guia XMLTV ainda não configurado",{"kind":"empty"})
-                    self.page.setText("Use ⚙ Configurar EPG na guia Futebol.")
-                else:
+                if self.selected_category in (None, "playlists"):
                     for r in self.library.playlists():
                         self._add_result(r["name"] + ("  ✓" if r["id"] == self.playlist_id else ""),{"kind":"playlist",**r})
+                    self.page.setText("Clique com o botão direito em uma lista para editar ou remover.")
                 self._exhausted = True
             elif self.mode == "home":
                 rows = self.library.recent(self.playlist_id,limit=100)
