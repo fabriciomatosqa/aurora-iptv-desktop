@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 from pathlib import Path
+from pathlib import PureWindowsPath
 from urllib.parse import unquote, urlsplit
 
 CHANNEL_KEYS = ("logo_path", "tvg-logo", "tvg_logo", "stream_icon", "logo",
@@ -25,6 +26,12 @@ def valid_artwork(value: object) -> str:
     value = value.strip()
     if not value or len(value) > 8192:
         return ""
+    # Windows drive paths (C:\\... / C:/...) look like URL schemes to
+    # urlsplit(). Check them first, otherwise Windows local artwork is
+    # discarded while the identical Linux test passes.
+    if value[0].isascii() and value[0].isalpha() and len(value)>=3:
+        if value[1]==":" and value[2] in ("\\\\","/"):
+            return value if PureWindowsPath(value).is_absolute() else ""
     # M3U playlists often publish protocol-relative CDN addresses.
     if value.startswith("//"):
         value="https:"+value
