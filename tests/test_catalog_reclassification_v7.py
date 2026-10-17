@@ -194,17 +194,17 @@ def test_sparse_refresh_preserves_original_synopsis_logo_and_user_state(tmp_path
     lib=LibraryV2(tmp_path/"sparse.db")
     pid=lib.add_playlist("Home",str(source))
     source.write_text(
-        '#EXTM3U\\n'
+        '#EXTM3U\n'
         '#EXTINF:-1 xui-id="unique-10" group-title="Filmes" '
         'tvg-logo="https://images.invalid/film.png" '
-        'description="Sinopse preservada",Um filme\\n'
-        'https://cdn.invalid/play/original\\n',encoding="utf-8")
+        'description="Sinopse preservada",Um filme\n'
+        'https://cdn.invalid/play/original\n',encoding="utf-8")
     lib.import_playlist(pid)
     original=lib.browse(pid,"movie",None)[0]
     source.write_text(
-        '#EXTM3U\\n'
-        '#EXTINF:-1 xui-id="unique-10" group-title="Filmes",Um filme\\n'
-        'https://cdn.invalid/play/changed\\n',encoding="utf-8")
+        '#EXTM3U\n'
+        '#EXTINF:-1 xui-id="unique-10" group-title="Filmes",Um filme\n'
+        'https://cdn.invalid/play/changed\n',encoding="utf-8")
     lib.import_playlist(pid)
     current=lib.browse(pid,"movie",None)[0]
     assert current["key"]==original["key"]
