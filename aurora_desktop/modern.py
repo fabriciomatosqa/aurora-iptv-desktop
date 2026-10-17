@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import datetime
+import os
+import time
 from pathlib import Path
 import sys
 
@@ -12,15 +14,16 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
+    QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QDialog, QTextBrowser,
-    QPushButton, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu, QGraphicsOpacityEffect, QStyleOptionSlider, QStyle,
+    QPushButton, QProgressBar, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu, QGraphicsOpacityEffect, QStyleOptionSlider, QStyle, QStyledItemDelegate,
 )
 
 from . import app as legacy
 from .catalog import LibraryV2, guess_xtream_epg
-from .ui_icons import icon_for
 from .svg_icons import svg_icon_for
+from .sports_data import fetch_score_updates, fixture_key, national_artwork
+from .football_widgets import BadgeLoader, FootballCardWidget
 
 # The original Qt player keeps the same settings, DB path, resuming and playlist management.
 legacy.Library = LibraryV2
@@ -75,7 +78,7 @@ class AuroraSeekSlider(QSlider):
             QStyle.SubControl.SC_SliderHandle,self)
         painter=QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        spark=icon_for("sparkle",21).pixmap(QSize(21,21))
+        spark=svg_icon_for("sparkle",21).pixmap(QSize(21,21))
         painter.drawPixmap(region.center()-QPoint(10,10),spark)
         painter.end()
 
@@ -211,6 +214,57 @@ class PlayerSplash(QFrame):
         layout.addStretch(2)
 
 
+class ScoreWorker(QObject):
+    completed = Signal(int, object)
+
+    def __init__(self, playlist_id: int, records: list[dict]):
+        super().__init__()
+        self.playlist_id = playlist_id
+        self.records = [dict(item) for item in records]
+
+    def run(self):
+        # Network lookup is isolated from Qt GUI and never sees credentials.
+        try:
+            updates = fetch_score_updates(self.records)
+        except Exception:
+            updates = {}
+        self.completed.emit(self.playlist_id, updates)
+
+
+class FootballLiveDelegate(QStyledItemDelegate):
+    """Pulse only on an XMLTV-confirmed scheduled live broadcast.
+
+    This badge is a display hint from the EPG, not proof of the video
+    stream or a substitute for an independently verified live score.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.pulse_on = True
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        record = index.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(record, dict) or record.get("kind") != "football":
+            return
+        if record.get("broadcast") != "live" or not self.pulse_on:
+            return
+        try:
+            now = datetime.now().astimezone()
+            start = datetime.fromisoformat(record["start"]).astimezone()
+            end = datetime.fromisoformat(record["end"]).astimezone()
+            if not (start <= now < end):
+                return
+        except (KeyError, TypeError, ValueError):
+            return
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#45d9a0"))
+        box = option.rect
+        painter.drawEllipse(QRectF(box.right() - 22, box.top() + 16, 10, 10))
+        painter.restore()
+
+
 class Covers(QObject):
     """Small bounded asynchronous cover cache; Qt requests never block the GUI."""
     def __init__(self, list_widget: QListWidget):
@@ -243,7 +297,7 @@ class Covers(QObject):
         painter.setPen(QColor("#386c7c"))
         painter.setBrush(QBrush(gradient))
         painter.drawRoundedRect(1, 1, 82, 102, 11, 11)
-        symbol = icon_for(kind, 45).pixmap(QSize(45, 45))
+        symbol = svg_icon_for(kind, 45).pixmap(QSize(45, 45))
         painter.drawPixmap((84-symbol.width())//2, (104-symbol.height())//2, symbol)
         painter.end()
         return QIcon(pixmap)
@@ -443,6 +497,15 @@ class MainWindow(legacy.MainWindow):
         self.heading = QLabel("Explorar")
         self.heading.setObjectName("heading")
         heading_row.addWidget(self.heading, 1)
+        # Native indeterminate progress bar, not a fake percent or timer.
+        self.guide_busy = QProgressBar(contents_panel)
+        self.guide_busy.setObjectName("guideBusy")
+        self.guide_busy.setRange(0, 0)
+        self.guide_busy.setTextVisible(False)
+        self.guide_busy.setFixedSize(64, 12)
+        self.guide_busy.setAccessibleName("Atualizando agenda de futebol")
+        self.guide_busy.hide()
+        heading_row.addWidget(self.guide_busy, 0)
         self.football_refresh = QPushButton("Atualizar")
         self.football_refresh.setObjectName("footballRefresh")
         self.football_refresh.setIcon(svg_icon_for("refresh", 22))
@@ -569,14 +632,28 @@ class MainWindow(legacy.MainWindow):
         epg_text.setObjectName("muted")
         epg_text.setWordWrap(True)
         epg_layout.addWidget(epg_text)
-        config_epg=QPushButton("Configurar fonte EPG")
-        config_epg.setIcon(svg_icon_for("guide"))
-        config_epg.clicked.connect(self._configure_guide)
-        epg_layout.addWidget(config_epg)
-        update_epg=QPushButton("Atualizar agenda de futebol")
-        update_epg.setIcon(svg_icon_for("refresh"))
-        update_epg.clicked.connect(self._update_guide)
-        epg_layout.addWidget(update_epg)
+        self.config_epg_button=QPushButton("Configurar fonte EPG")
+        self.config_epg_button.setIcon(svg_icon_for("settings"))
+        self.config_epg_button.clicked.connect(self._configure_guide)
+        epg_layout.addWidget(self.config_epg_button)
+        self.update_epg_button=QPushButton("Atualizar agenda de futebol")
+        self.update_epg_button.setIcon(svg_icon_for("refresh"))
+        self.update_epg_button.clicked.connect(self._update_guide)
+        epg_layout.addWidget(self.update_epg_button)
+        self.sports_online_checkbox = QCheckBox("Consultar resultados e escudos online (ESPN e fontes associadas)")
+        self.sports_online_checkbox.setToolTip(
+            "Os provedores e os titulares dos escudos estabelecem suas próprias condições de uso. "
+            "Desative para não realizar consultas esportivas externas.")
+        self.sports_online_checkbox.setChecked(self.settings.value(
+            "football/online_data", True, type=bool))
+        self.sports_online_checkbox.toggled.connect(self._sports_online_changed)
+        epg_layout.addWidget(self.sports_online_checkbox)
+        self.sports_attribution = QLabel(
+            "Fontes: ESPN (resultados e escudos) e TheSportsDB (algumas federações). "
+            "Imagens e dados sujeitos aos direitos e condições de seus titulares.")
+        self.sports_attribution.setObjectName("muted")
+        self.sports_attribution.setWordWrap(True)
+        epg_layout.addWidget(self.sports_attribution)
         self.epg_settings.hide()
         content_layout.addWidget(self.epg_settings)
         self.settings_sections = {
@@ -593,6 +670,11 @@ class MainWindow(legacy.MainWindow):
         self.results = QListWidget()
         self.results.setObjectName("results")
         self.results.setIconSize(QSize(70,88))
+        self.badge_loader = BadgeLoader(self.results)
+        self._football_card_widgets = {}
+        self._football_updates = {}
+        self._football_live_delegate = FootballLiveDelegate(self.results)
+        self.results.setItemDelegate(self._football_live_delegate)
         self.results.setUniformItemSizes(True)
         self.results.setSpacing(7)
         self.results.setWordWrap(True)
@@ -683,7 +765,7 @@ class MainWindow(legacy.MainWindow):
         controls.setSpacing(10)
         self.play=QPushButton("Reproduzir")
         self.play.setObjectName("playButton")
-        self.play.setIcon(icon_for("play",22))
+        self.play.setIcon(svg_icon_for("play",22))
         self.play.setIconSize(QSize(22,22))
         self.play.clicked.connect(self._toggle_play)
         controls.addWidget(self.play)
@@ -701,19 +783,19 @@ class MainWindow(legacy.MainWindow):
         actions.setContentsMargins(0,0,0,0)
         actions.setSpacing(10)
         self.favorite=QPushButton("Favoritar")
-        self.favorite.setIcon(icon_for("favorites"))
+        self.favorite.setIcon(svg_icon_for("favorites"))
         self.favorite.setIconSize(QSize(22,22))
         self.favorite.clicked.connect(self._favorite)
         actions.addWidget(self.favorite)
         self.fullscreen_button=QPushButton("Tela cheia")
-        self.fullscreen_button.setIcon(icon_for("fullscreen"))
+        self.fullscreen_button.setIcon(svg_icon_for("fullscreen"))
         self.fullscreen_button.setIconSize(QSize(20,20))
         self.fullscreen_button.clicked.connect(self._toggle_video_fullscreen)
         self.fullscreen_button.setToolTip("Tela cheia (F11) · sair com Esc")
         actions.addWidget(self.fullscreen_button)
         self.volume_button=QPushButton()
         self.volume_button.setObjectName("volumeButton")
-        self.volume_button.setIcon(icon_for("volume",22))
+        self.volume_button.setIcon(svg_icon_for("volume",22))
         self.volume_button.setIconSize(QSize(22,22))
         self.volume_button.setToolTip("Ativar/desativar som")
         self.volume_button.clicked.connect(self._toggle_mute)
@@ -741,7 +823,7 @@ class MainWindow(legacy.MainWindow):
         self.fs_content_label.setObjectName("fsTitle")
         top_row.addWidget(self.fs_content_label,1)
         self.fs_top_exit=QPushButton("Sair da tela cheia")
-        self.fs_top_exit.setIcon(icon_for("exit-fullscreen",20))
+        self.fs_top_exit.setIcon(svg_icon_for("exit-fullscreen",20))
         self.fs_top_exit.clicked.connect(self._leave_video_fullscreen)
         top_row.addWidget(self.fs_top_exit)
         hud.addLayout(top_row)
@@ -764,19 +846,19 @@ class MainWindow(legacy.MainWindow):
         buttons=QHBoxLayout()
         buttons.setSpacing(12)
         self.fs_play=QPushButton("Reproduzir")
-        self.fs_play.setIcon(icon_for("play",24))
+        self.fs_play.setIcon(svg_icon_for("play",24))
         self.fs_play.setIconSize(QSize(24,24))
         self.fs_play.setObjectName("playButton")
         self.fs_play.clicked.connect(self._toggle_play)
         buttons.addWidget(self.fs_play)
         self.fs_favorite=QPushButton("Favoritar")
-        self.fs_favorite.setIcon(icon_for("sparkle",21))
+        self.fs_favorite.setIcon(svg_icon_for("favorites",21))
         self.fs_favorite.setIconSize(QSize(21,21))
         self.fs_favorite.clicked.connect(self._favorite)
         buttons.addWidget(self.fs_favorite)
         buttons.addStretch(1)
         self.fs_volume_icon=QPushButton()
-        self.fs_volume_icon.setIcon(icon_for("volume",22))
+        self.fs_volume_icon.setIcon(svg_icon_for("volume",22))
         self.fs_volume_icon.setIconSize(QSize(22,22))
         self.fs_volume_icon.setToolTip("Ativar/desativar som")
         self.fs_volume_icon.clicked.connect(self._toggle_mute)
@@ -789,7 +871,7 @@ class MainWindow(legacy.MainWindow):
         self.volume_slider.valueChanged.connect(self.fs_volume.setValue)
         buttons.addWidget(self.fs_volume)
         self.fs_exit=QPushButton("Sair da tela cheia")
-        self.fs_exit.setIcon(icon_for("exit-fullscreen",20))
+        self.fs_exit.setIcon(svg_icon_for("exit-fullscreen",20))
         self.fs_exit.clicked.connect(self._leave_video_fullscreen)
         buttons.addWidget(self.fs_exit)
         fs_box.addLayout(buttons)
@@ -854,6 +936,18 @@ class MainWindow(legacy.MainWindow):
         self._search_timer.setInterval(240)
         self._search_timer.timeout.connect(self._refresh)
         self.guide_thread = None
+        self.score_thread = None
+        self.score_worker = None
+        self._score_request_playlist = None
+        self._score_last_started = 0.0
+        self._score_timer = QTimer(self)
+        self._score_timer.setInterval(60_000)
+        self._score_timer.timeout.connect(self._start_score_updates)
+        self._score_timer.start()
+        self._live_badge_timer = QTimer(self)
+        self._live_badge_timer.setInterval(700)
+        self._live_badge_timer.timeout.connect(self._pulse_football_badge)
+        self._live_badge_timer.start()
         self.setMinimumSize(1150,680)
         self.resize(1580,900)
 
@@ -905,9 +999,9 @@ class MainWindow(legacy.MainWindow):
         caption="Pausar" if playing else "Reproduzir"
         icon="pause" if playing else "play"
         self.play.setText(caption)
-        self.play.setIcon(icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
+        self.play.setIcon(svg_icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
         self.fs_play.setText(caption)
-        self.fs_play.setIcon(icon_for(icon,24,light=not getattr(self,"_theme_dark",True)))
+        self.fs_play.setIcon(svg_icon_for(icon,24,light=not getattr(self,"_theme_dark",True)))
 
     def _sync_fullscreen_duration(self,duration):
         self.fs_seek.setRange(0,max(0,duration))
@@ -924,8 +1018,8 @@ class MainWindow(legacy.MainWindow):
 
     def _sync_volume_icon(self):
         icon="mute" if self.audio.isMuted() else "volume"
-        self.volume_button.setIcon(icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
-        self.fs_volume_icon.setIcon(icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
+        self.volume_button.setIcon(svg_icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
+        self.fs_volume_icon.setIcon(svg_icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
 
     def _sync_favorite_controls(self):
         enabled=self.favorite.isEnabled()
@@ -1440,13 +1534,27 @@ class MainWindow(legacy.MainWindow):
         self.previous.setIcon(svg_icon_for("back",24,light=not dark))
         self.action.setIcon(svg_icon_for("refresh",24,light=not dark))
         self.second_action.setIcon(svg_icon_for("manage",24,light=not dark))
-        self.favorite.setIcon(icon_for("favorites", 22, light=not dark))
-        self.fullscreen_button.setIcon(icon_for("fullscreen",20,light=not dark))
-        self.fs_top_exit.setIcon(icon_for("exit-fullscreen",20,light=not dark))
-        self.fs_exit.setIcon(icon_for("exit-fullscreen",20,light=not dark))
-        self.fs_favorite.setIcon(icon_for("sparkle",21,light=not dark))
+        self.favorite.setIcon(svg_icon_for("favorites", 22, light=not dark))
+        self.fullscreen_button.setIcon(svg_icon_for("fullscreen",20,light=not dark))
+        self.fs_top_exit.setIcon(svg_icon_for("exit-fullscreen",20,light=not dark))
+        self.fs_exit.setIcon(svg_icon_for("exit-fullscreen",20,light=not dark))
+        self.fs_favorite.setIcon(svg_icon_for("favorites",21,light=not dark))
+        self.config_epg_button.setIcon(svg_icon_for("settings",24,light=not dark))
+        self.update_epg_button.setIcon(svg_icon_for("refresh",24,light=not dark))
+        self.player_back.setIcon(svg_icon_for("back",20,light=not dark))
+        self.synopsis_button.setIcon(svg_icon_for("series",20,light=not dark))
         self._sync_play_icons()
         self._sync_volume_icon()
+        for card in self._football_card_widgets.values():
+            card.apply_theme(dark)
+
+    def _sports_online_changed(self, enabled: bool):
+        self.settings.setValue("football/online_data", enabled)
+        self._football_updates.clear()
+        self._score_last_started = 0.0
+
+    def _sports_online_enabled(self) -> bool:
+        return self.settings.value("football/online_data", True, type=bool)
 
     def _on_playlist(self):
         # Selecting a playlist in Configurações should not unexpectedly
@@ -1477,6 +1585,7 @@ class MainWindow(legacy.MainWindow):
         self._refresh()
         if mode == "football" and self.playlist_id is not None:
             self._maybe_load_guide()
+            QTimer.singleShot(800, self._start_score_updates)
 
     def _set_update_channel(self, index):
         channel = self.update_channel.itemData(index)
@@ -1556,7 +1665,10 @@ class MainWindow(legacy.MainWindow):
         self.groups.blockSignals(False)
         self.selected_category = None
         self.offset = 0
+        self._football_card_widgets.clear()
         self.football_refresh.setVisible(self.mode == "football")
+        self.guide_busy.setVisible(self.mode == "football" and bool(
+            getattr(self, "guide_thread", None) and self.guide_thread.isRunning()))
         self.action.setVisible(self.mode not in ("settings", "football"))
         self.second_action.setVisible(self.mode not in ("settings", "football"))
         self.action.setText("Adicionar URL M3U" if self.mode == "settings" or self.playlist_id is None
@@ -1619,10 +1731,11 @@ class MainWindow(legacy.MainWindow):
     def _add_result(self,label,record):
         item = QListWidgetItem(label)
         item.setData(Qt.ItemDataRole.UserRole,record)
-        item.setSizeHint(QSize(0,141 if record.get("kind") == "football" else 106))
+        item.setSizeHint(QSize(0,170 if record.get("kind") == "football" else 106))
         item.setToolTip(label.replace("\n", " — "))
         self.results.addItem(item)
-        self.covers.enqueue(item,record.get("logo",""),record.get("kind","movie"))
+        if record.get("kind") != "football":
+            self.covers.enqueue(item,record.get("logo",""),record.get("kind","movie"))
         return item
 
     def _load_items(self,reset=False):
@@ -1661,7 +1774,7 @@ class MainWindow(legacy.MainWindow):
                 self._exhausted = True
             else:
                 if self.mode == "football":
-                    rows = self.library.football(self.playlist_id,None if query else self.selected_category,query,limit=61,offset=self.offset)
+                    rows = self.library.football(self.playlist_id,self.selected_category,query,limit=61,offset=self.offset)
                     # An empty EPG is not a list of fixtures. Sports channels
                     # remain accessible under Ao vivo; never label channels as matches.
                     self._exhausted = len(rows) <= 60
@@ -1669,7 +1782,7 @@ class MainWindow(legacy.MainWindow):
                         self.page.setText(
                             "Nenhuma partida identificada. Os canais continuam disponíveis em Ao vivo.")
                 else:
-                    rows = self.library.browse(self.playlist_id,self.mode,None if query else self.selected_category,query,limit=61,offset=self.offset)
+                    rows = self.library.browse(self.playlist_id,self.mode,self.selected_category,query,limit=61,offset=self.offset)
                     self._exhausted = len(rows) <= 60
                 self._add_many(rows[:60] if not self._exhausted else rows)
                 self.offset += min(len(rows),60)
@@ -1706,6 +1819,9 @@ class MainWindow(legacy.MainWindow):
             if match:
                 home, away = match.home,match.away
         opponents = f"{home}  X  {away}" if home and away else record.get("title","")
+        hscore, ascore = record.get("home_score"), record.get("away_score")
+        if home and away and hscore is not None and ascore is not None:
+            opponents = f"{home}  {hscore} X {ascore}  {away}"
         channel = record.get("channel_title") or "Canal indisponível"
         broadcast = record.get("broadcast")
         if broadcast == "replay":
@@ -1728,9 +1844,15 @@ class MainWindow(legacy.MainWindow):
         for r in rows:
             title = r.get("title","")
             if self.mode == "football" and r.get("kind") == "football":
-                title = self._football_label(r)
-                if r.get("event_logo"):
-                    r = {**r, "logo": r["event_logo"]}
+                match_key = fixture_key(r)
+                if self._sports_online_enabled():
+                    r = {**r, **national_artwork(r), **self._football_updates.get(match_key, {})}
+                item = self._add_result(self._football_label(r), r)
+                card = FootballCardWidget(r, self.badge_loader,
+                                          dark=getattr(self, "_theme_dark", True))
+                self.results.setItemWidget(item, card)
+                self._football_card_widgets[match_key] = card
+                continue
             elif r.get("kind") == "football_channel":
                 title = "CANAL ESPORTIVO  ·  " + title
             elif r.get("kind") == "series" and self.mode != "episodes":
@@ -1738,6 +1860,78 @@ class MainWindow(legacy.MainWindow):
             elif self.mode == "episodes" and r.get("season") is not None:
                 title += f"\nT{r['season']:02d}  E{r['episode']:02d}"
             self._add_result(title,r)
+
+    def _pulse_football_badge(self):
+        if self.mode == "football":
+            self._football_live_delegate.pulse_on = not self._football_live_delegate.pulse_on
+            for card in self._football_card_widgets.values():
+                card.set_pulse(self._football_live_delegate.pulse_on)
+            self.results.viewport().update()
+
+    def _start_score_updates(self):
+        if (self.mode != "football" or self.playlist_id is None
+                or not self.isVisible()
+                or os.environ.get("QT_QPA_PLATFORM") == "offscreen"
+                or os.environ.get("AURORA_SCORE_OFFLINE") == "1"
+                or not self._sports_online_enabled()):
+            return
+        if self.score_thread is not None and self.score_thread.isRunning():
+            return
+        if time.monotonic() - self._score_last_started < 54:
+            return
+        records = [self.results.item(n).data(Qt.ItemDataRole.UserRole)
+                   for n in range(min(self.results.count(),70))]
+        records = [row for row in records if isinstance(row,dict)
+                   and row.get("kind") == "football"]
+        if not records:
+            return
+        self._score_last_started = time.monotonic()
+        # Mark ageing scores as stale even if the refresh provider is offline.
+        for card in self._football_card_widgets.values():
+            card.update_record(card.row)
+        thread = QThread(self)
+        worker = ScoreWorker(self.playlist_id, records)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.completed.connect(self._scores_ready)
+        worker.completed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._scores_done)
+        self.score_thread, self.score_worker = thread, worker
+        self._score_request_playlist = self.playlist_id
+        thread.start()
+
+    def _scores_ready(self, playlist_id, updates):
+        if playlist_id != self.playlist_id:
+            return  # Playlist changed while network requests were in flight.
+        if not self._sports_online_enabled():
+            return
+        self._football_updates.update(updates)
+        if self.mode != "football":
+            return
+        selected = self.results.currentRow()
+        scroll = self.results.verticalScrollBar().value()
+        for n in range(self.results.count()):
+            item = self.results.item(n)
+            row = item.data(Qt.ItemDataRole.UserRole)
+            if not isinstance(row,dict) or row.get("kind") != "football":
+                continue
+            key = fixture_key(row)
+            if key not in updates:
+                continue
+            row = {**row, **updates[key]}
+            item.setData(Qt.ItemDataRole.UserRole, row)
+            item.setText(self._football_label(row))
+            card = self._football_card_widgets.get(key)
+            if card is not None:
+                card.update_record(row)
+        self.results.setCurrentRow(selected)
+        self.results.verticalScrollBar().setValue(scroll)
+
+    def _scores_done(self):
+        self.score_thread = None
+        self.score_worker = None
 
     def _near_end(self,value):
         scrollbar = self.results.verticalScrollBar()
@@ -1957,7 +2151,10 @@ class MainWindow(legacy.MainWindow):
         thread.finished.connect(self._guide_done)
         self.guide_thread,self.guide_worker = thread,worker
         self.football_refresh.setEnabled(False)
+        self.update_epg_button.setEnabled(False)
         self.football_refresh.setText("Atualizando...")
+        self.update_epg_button.setText("Atualizando...")
+        self.guide_busy.setVisible(self.mode == "football")
         self.status.setText("Lendo programação do guia XMLTV...")
         thread.start()
 
@@ -1979,6 +2176,7 @@ class MainWindow(legacy.MainWindow):
                         break
             self._load_items(reset=True)
             self._restore_result_scroll(position)
+            QTimer.singleShot(800, self._start_score_updates)
 
     def _guide_failed(self,error):
         self.status.setText("Não foi possível atualizar a programação.")
@@ -1988,7 +2186,10 @@ class MainWindow(legacy.MainWindow):
         self.guide_thread = None
         self.guide_worker = None
         self.football_refresh.setEnabled(True)
+        self.update_epg_button.setEnabled(True)
+        self.guide_busy.hide()
         self.football_refresh.setText("Atualizar")
+        self.update_epg_button.setText("Atualizar agenda de futebol")
 
     def _import_active(self):
         if self.thread is None or not self.thread.isRunning():
@@ -2026,6 +2227,12 @@ class MainWindow(legacy.MainWindow):
             QMessageBox.information(self,"EPG em andamento","Aguarde a conclusão da atualização do guia.")
             event.ignore()
             return
+        if self.score_thread is not None and self.score_thread.isRunning():
+            self.status.setText("Consultando resultados esportivos; encerramento após a consulta.")
+            event.ignore()
+            return
+        self._live_badge_timer.stop()
+        self._score_timer.stop()
         super().closeEvent(event)
 
 

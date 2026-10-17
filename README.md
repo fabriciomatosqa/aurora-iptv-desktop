@@ -1,6 +1,29 @@
-# AURORA IPTV — Desktop 0.6.0-beta.13
+# AURORA IPTV — Desktop 0.6.0-beta.14
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
+
+## v0.6.0-beta.14 — SVGs do player, filtros combinados e EPG
+
+- Ícones de player, volume, tela cheia, favoritos e demais controles convertidos para SVG Qt de alta densidade.
+- Pesquisa dentro de um campeonato ou gênero preserva o filtro selecionado.
+- EPG usa engrenagem correta nas Configurações, barra de atualização indeterminada e botões desabilitados enquanto o guia carrega.
+- O marcador verde de **AO VIVO conforme EPG** pisca apenas quando a programação identifica a transmissão dentro do horário atual; isso não confirma a imagem reproduzida.
+- Ampliação dos testes automáticos em Windows e Linux.
+
+**Ainda pendente:** placares/minutos em tempo real e escudos oficiais. Uma integração confiável e com direitos de uso adequados será necessária; não há dados esportivos fictícios.
+
+## v0.6.0-beta.14 — fontes esportivas aproveitadas do Android
+
+- **Placar e minuto de partida:** ESPN consultada fora da interface; atualização enquanto a agenda está aberta (60 s), sem enviar URLs ou credenciais de playlists.
+- **Cards com três imagens:** logotipo da competição e escudos separados das duas equipes, carregados de forma assíncrona com fallback vetorial.
+- **Seleções:** CBF, AFA, US Soccer e RFEF, com referências usadas no Android e logotipo FIFA quando o jogo corresponde a seleções. Outras federações dependem de imagens obtidas e identificadas com segurança.
+- **Sem resultados falsos:** exige identidade confiável de ambas as equipes, campeonato e data. Não inventa 0 X 0, placar, horário ou escudo.
+- **Jogo x transmissão:** placar ao vivo não significa que o canal está transmitindo; a programação do canal continua sendo informada apenas pelo EPG.
+- **Configurações → Guia de futebol:** opção para desativar consultas externas e imagens esportivas.
+- **Regressões resolvidas:** ícones SVG, pesquisa preservando a categoria selecionada, botões compactos e progresso do EPG, histórico e sinopses.
+- Consulte [fontes e condições de uso](docs/SPORTS_DATA_SOURCES.md).
+
+**Atenção para comercialização:** os provedores e titulares dos escudos possuem regras próprias. A TheSportsDB exige plano pago para distribuição nas lojas, e logos de clubes/seleções podem demandar autorização. O código implementado é uma integração técnica beta, não uma licença comercial.
 
 ## v0.6.0-beta.13 — correção SVG, Futebol, histórico e sinopses
 

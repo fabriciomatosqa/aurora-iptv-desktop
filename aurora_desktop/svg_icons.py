@@ -25,6 +25,15 @@ PATHS = {
     "upload": '<rect x="3" y="15" width="18" height="6" rx="2"/><path d="M12 15V3m-5 5 5-5 5 5"/>',
     "manage": '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8 9h8M8 13h8M8 17h5"/>',
     "guide": '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4m8-4v4M8 13h2m4 0h2m-8 4h2"/>',
+    # Video controls use the exact same packaged, HiDPI-safe SVG renderer
+    # as navigation and EPG. This avoids a mixture of Qt-painted and SVG icons.
+    "play": '<path d="M5 3.5 21 12 5 20.5z" fill="{aqua}" stroke="{aqua}"/>',
+    "pause": '<rect x="4" y="3" width="6" height="18" rx="1.5" fill="{aqua}" stroke="{aqua}"/><rect x="14" y="3" width="6" height="18" rx="1.5" fill="{aqua}" stroke="{aqua}"/>',
+    "volume": '<path d="M2.5 9h4L13 4v16l-6.5-5h-4z" fill="{panel}"/><path d="M16 8a6 6 0 0 1 0 8M19 5a10 10 0 0 1 0 14"/>',
+    "mute": '<path d="M2.5 9h4L13 4v16l-6.5-5h-4z" fill="{panel}"/><path d="m16 9 6 6m0-6-6 6" stroke="{gold}"/>',
+    "fullscreen": '<path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/>',
+    "exit-fullscreen": '<path d="M3 9h6V3m6 0v6h6M9 21v-6H3m18 0h-6v6"/>',
+    "sparkle": '<path d="m12 2 2.7 7.3L22 12l-7.3 2.7L12 22l-2.7-7.3L2 12l7.3-2.7z" fill="{aqua}" stroke="{aqua}"/><path d="m19 1 .6 1.5L21 3l-1.4.5L19 5l-.6-1.5L17 3l1.4-.5z" fill="{gold}"/>',
     "update": '<path d="M12 3v12m-4-4 4 4 4-4"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
 }
 
