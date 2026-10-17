@@ -14,7 +14,7 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
+    QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QDialog, QTextBrowser,
     QPushButton, QProgressBar, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu, QGraphicsOpacityEffect, QStyleOptionSlider, QStyle, QStyledItemDelegate,
 )
@@ -640,6 +640,14 @@ class MainWindow(legacy.MainWindow):
         self.update_epg_button.setIcon(svg_icon_for("refresh"))
         self.update_epg_button.clicked.connect(self._update_guide)
         epg_layout.addWidget(self.update_epg_button)
+        self.sports_online_checkbox = QCheckBox("Consultar resultados e escudos online (ESPN e fontes associadas)")
+        self.sports_online_checkbox.setToolTip(
+            "Os provedores e os titulares dos escudos estabelecem suas próprias condições de uso. "
+            "Desative para não realizar consultas esportivas externas.")
+        self.sports_online_checkbox.setChecked(self.settings.value(
+            "football/online_data", True, type=bool))
+        self.sports_online_checkbox.toggled.connect(self._sports_online_changed)
+        epg_layout.addWidget(self.sports_online_checkbox)
         self.epg_settings.hide()
         content_layout.addWidget(self.epg_settings)
         self.settings_sections = {
@@ -1531,6 +1539,16 @@ class MainWindow(legacy.MainWindow):
         self.synopsis_button.setIcon(svg_icon_for("series",20,light=not dark))
         self._sync_play_icons()
         self._sync_volume_icon()
+        for card in self._football_card_widgets.values():
+            card.apply_theme(dark)
+
+    def _sports_online_changed(self, enabled: bool):
+        self.settings.setValue("football/online_data", enabled)
+        self._football_updates.clear()
+        self._score_last_started = 0.0
+
+    def _sports_online_enabled(self) -> bool:
+        return self.settings.value("football/online_data", True, type=bool)
 
     def _on_playlist(self):
         # Selecting a playlist in Configurações should not unexpectedly
@@ -1795,6 +1813,9 @@ class MainWindow(legacy.MainWindow):
             if match:
                 home, away = match.home,match.away
         opponents = f"{home}  X  {away}" if home and away else record.get("title","")
+        hscore, ascore = record.get("home_score"), record.get("away_score")
+        if home and away and hscore is not None and ascore is not None:
+            opponents = f"{home}  {hscore} X {ascore}  {away}"
         channel = record.get("channel_title") or "Canal indisponível"
         broadcast = record.get("broadcast")
         if broadcast == "replay":
@@ -1818,7 +1839,8 @@ class MainWindow(legacy.MainWindow):
             title = r.get("title","")
             if self.mode == "football" and r.get("kind") == "football":
                 match_key = fixture_key(r)
-                r = {**r, **national_artwork(r), **self._football_updates.get(match_key, {})}
+                if self._sports_online_enabled():
+                    r = {**r, **national_artwork(r), **self._football_updates.get(match_key, {})}
                 item = self._add_result(self._football_label(r), r)
                 card = FootballCardWidget(r, self.badge_loader,
                                           dark=getattr(self, "_theme_dark", True))
@@ -1844,7 +1866,8 @@ class MainWindow(legacy.MainWindow):
         if (self.mode != "football" or self.playlist_id is None
                 or not self.isVisible()
                 or os.environ.get("QT_QPA_PLATFORM") == "offscreen"
-                or os.environ.get("AURORA_SCORE_OFFLINE") == "1"):
+                or os.environ.get("AURORA_SCORE_OFFLINE") == "1"
+                or not self._sports_online_enabled()):
             return
         if self.score_thread is not None and self.score_thread.isRunning():
             return
@@ -1857,6 +1880,9 @@ class MainWindow(legacy.MainWindow):
         if not records:
             return
         self._score_last_started = time.monotonic()
+        # Mark ageing scores as stale even if the refresh provider is offline.
+        for card in self._football_card_widgets.values():
+            card.update_record(card.row)
         thread = QThread(self)
         worker = ScoreWorker(self.playlist_id, records)
         worker.moveToThread(thread)
@@ -1873,6 +1899,8 @@ class MainWindow(legacy.MainWindow):
     def _scores_ready(self, playlist_id, updates):
         if playlist_id != self.playlist_id:
             return  # Playlist changed while network requests were in flight.
+        if not self._sports_online_enabled():
+            return
         self._football_updates.update(updates)
         if self.mode != "football":
             return
