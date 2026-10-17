@@ -126,7 +126,7 @@ def test_catalog_adds_real_posters_without_resetting_user_data(tmp_path,monkeypa
 def test_qt_cards_load_local_artwork_and_persisted_cache(tmp_path,monkeypatch):
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QPixmap,QColor
-    from PySide6.QtWidgets import QApplication,QListWidget,QListWidgetItem
+    from PySide6.QtWidgets import QApplication,QListWidget,QListWidgetItem,QLabel
     from aurora_desktop.modern import Covers
     monkeypatch.setenv("LOCALAPPDATA",str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME",str(tmp_path))
@@ -149,4 +149,15 @@ def test_qt_cards_load_local_artwork_and_persisted_cache(tmp_path,monkeypatch):
     logo=QListWidgetItem("TV",widget)
     loader.enqueue(logo,image_url,"live")
     assert logo.icon().cacheKey()!=loader.blanks["live"].cacheKey()
+    preview=QLabel()
+    preview.setFixedSize(132,190)
+    loader.enqueue_preview(preview,str(local),"movie")
+    assert preview.pixmap() is not None and not preview.pixmap().isNull()
+    loader.enqueue_preview(preview,image_url,"series")
+    assert preview.pixmap() is not None and not preview.pixmap().isNull()
+    # A stale request for the previous item may not overwrite selection.
+    preview.setProperty("artworkUrl","https://cdn.example/other.png")
+    before=preview.pixmap().cacheKey()
+    loader._show_preview(preview,image_url,image)
+    assert preview.pixmap().cacheKey()==before
     widget.close()
