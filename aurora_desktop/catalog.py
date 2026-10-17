@@ -62,6 +62,21 @@ MATCH = re.compile(r"(?i)\b[\wÀ-ÿ][\wÀ-ÿ .'-]{1,45}\s+(?:x|vs\.?|versus|×)\
 FOOTBALL = re.compile(r"(?i)\bfutebol\b|\bfootball\b|\bsoccer\b|\bbrasileir[aã]o\b|\bchampions\b|\blibertadores\b|\bcopa\s+do\s+brasil\b|\bmundial\s+de\s+clubes\b")
 
 
+def competition_group(name: str) -> str:
+    """Navigation group, derived strictly from XMLTV competition metadata."""
+    key = normalized(name)
+    if (("fifa" in key or "copa do mundo" in key or "selecao" in key
+         or "nations league" in key) and "clube" not in key):
+        return "FIFA"
+    if "libertadores" in key:
+        return "Libertadores"
+    if "sul americana" in key or "sulamericana" in key:
+        return "Sul-Americana"
+    if "brasileirao" in key or "campeonato brasileiro" in key or "serie b brasileira" in key:
+        return "Brasileirão"
+    return name
+
+
 def clean_label(text: str) -> str:
     """Remove formatting markers, not content names."""
     text = text.strip().strip("✦●•|: ")
@@ -468,17 +483,27 @@ class LibraryV2(Library):
 
     def football(self, playlist_id: int, category: str | None = None, search: str = "",
                  limit: int = 70, offset: int = 0) -> list[dict]:
-        # Keep at most the last hour after a broadcast ends; refresh this filter
-        # on every query rather than waiting for a new XMLTV import.
+        # Only actual playable matches from XMLTV. Match names in data,
+        # including older databases migrated without explicit team columns.
         threshold = (datetime.now().astimezone() - timedelta(hours=1)).isoformat()
         where = ["f.playlist_id=?", "datetime(f.end)>datetime(?)", "i.key IS NOT NULL"]
-        args: list = [playlist_id,threshold]
+        args: list = [playlist_id, threshold]
         if category:
-            where.append("f.competition=?")
-            args.append(category)
+            if category in ("FIFA","Brasileirão","Libertadores","Sul-Americana"):
+                with self.connect() as db:
+                    names = [r[0] for r in db.execute(
+                        "SELECT DISTINCT competition FROM football_events WHERE playlist_id=?",
+                        (playlist_id,)) if competition_group(r[0]) == category]
+                if not names:
+                    return []
+                where.append("f.competition IN (" + ",".join("?" for _ in names) + ")")
+                args.extend(names)
+            else:
+                where.append("f.competition=?")
+                args.append(category)
         if search:
-            where.append("f.title LIKE ?")
-            args.append(f"%{search}%")
+            where.append("(f.home_team LIKE ? OR f.away_team LIKE ? OR f.title LIKE ?)")
+            args.extend([f"%{search}%"] * 3)
         sql = f"""SELECT * FROM (
             SELECT f.*, i.title AS channel_title, i.url, i.key, i.logo,
                 'football' AS kind,
@@ -491,7 +516,14 @@ class LibraryV2(Library):
         ) WHERE channel_rank=1
         ORDER BY datetime(start) ASC LIMIT ? OFFSET ?"""
         with self.connect() as db:
-            return [dict(r) for r in db.execute(sql,(*args,limit,offset))]
+            rows = [dict(r) for r in db.execute(sql,(*args,limit,offset))]
+        for row in rows:
+            if not row.get("home_team") or not row.get("away_team"):
+                teams = football_details(row["title"], row.get("competition",""))
+                if teams is None:
+                    continue
+                row["home_team"], row["away_team"] = teams.home,teams.away
+        return [row for row in rows if row.get("home_team") and row.get("away_team")]
 
     def football_categories(self, playlist_id: int) -> list[dict]:
         threshold = (datetime.now().astimezone() - timedelta(hours=1)).isoformat()
@@ -500,7 +532,14 @@ class LibraryV2(Library):
             WHERE f.playlist_id=? AND datetime(f.end)>datetime(?) AND i.key IS NOT NULL
             GROUP BY f.competition ORDER BY f.competition"""
         with self.connect() as db:
-            return [dict(r) for r in db.execute(sql,(playlist_id,threshold))]
+            result = [dict(r) for r in db.execute(sql,(playlist_id,threshold))]
+        groups: dict[str,int] = {}
+        for row in result:
+            group = competition_group(row["title"])
+            groups[group] = groups.get(group,0) + row["total"]
+        order = {"FIFA":0, "Brasileirão":1, "Libertadores":2, "Sul-Americana":3}
+        return [{"title":title,"total":amount} for title,amount in sorted(
+            groups.items(), key=lambda pair: (order.get(pair[0],4),normalized(pair[0])))]
 
 
     def sport_channels(self, playlist_id: int, search: str = "", limit: int = 160) -> list[dict]:
