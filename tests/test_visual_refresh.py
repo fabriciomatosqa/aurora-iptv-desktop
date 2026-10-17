@@ -57,11 +57,11 @@ def test_menu_uses_vector_icons_and_human_readable_labels(tmp_path,monkeypatch):
     app=QApplication.instance() or QApplication([])
     win=MainWindow()
     try:
-        assert set(win.nav)=={"home","live","movie","series","football","favorites","settings"}
+        assert set(win.nav)=={"home","live","movie","series","football","other","favorites","settings"}
         assert [(k,btn.text()) for k,btn in win.nav.items()] == [
             ("home","Início"),("live","Ao vivo"),("movie","Filmes"),
             ("series","Séries"),("football","Futebol"),
-            ("favorites","Favoritos"),("settings","Configurações")
+            ("other","Não classificados"),("favorites","Favoritos"),("settings","Configurações")
         ]
         assert all(btn.objectName()=="navButton" for btn in win.nav.values())
         assert all(not btn.icon().isNull() for btn in win.nav.values())
