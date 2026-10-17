@@ -1,3 +1,30 @@
+# AURORA IPTV Desktop v0.6.0-171026.03
+
+## Classificação e atualização de catálogos (Windows/Linux)
+
+- Prioridade de sinais reais por item: tipo declarado, estrutura da transmissão,
+  temporadas/episódios, tvg-id, categoria oficial da API e somente depois
+  heurísticas de grupo. Grupos ambíguos não devem converter episódios em filmes.
+- Migração SQLite v7 em lotes: reclassificação de itens existentes alterando apenas
+  os registros necessários, sem recriar playlists nem a tabela de favoritos.
+- Reconciliação de URL por xui-id único e, no primeiro upgrade de instalações
+  antigas, por combinação exata e não ambígua de grupo+título.
+- Atualizações completas podem eliminar registros obsoletos com uma verificação
+  conservadora de integridade; entradas ligadas a favoritos ou histórico
+  continuam protegidas. Respostas incompletas preservam a biblioteca.
+- Campos de sinopse e capa já armazenados não são apagados quando a nova
+  playlist omite esses metadados.
+- A mesma conta Xtream não é cadastrada duas vezes apenas por escolher HLS
+  em vez de MPEG-TS. Proxies em domínios distintos não são fundidos sem
+  confirmação de equivalência.
+- Testes com amostras sintéticas estruturalmente equivalentes a uma M3U real
+  grande, sem qualquer URL de acesso ou credencial privada.
+
+**Sem modificações** no esquema v0.6.0-DDMMAA.NN, verificação GitHub Releases,
+download online, SHA-256, player ou controles de reprodução.
+
+## Histórico de versões
+
 # AURORA IPTV Desktop v0.6.0-171026.01
 
 Esta é a primeira versão que retoma o padrão **v0.6.0-DDMMAA.NN**.
