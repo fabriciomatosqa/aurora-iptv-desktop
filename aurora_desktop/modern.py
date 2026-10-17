@@ -739,21 +739,105 @@ class MainWindow(legacy.MainWindow):
         self.setMinimumSize(1150,680)
         self.resize(1580,900)
 
-    def _toggle_video_fullscreen(self):
-        """Enlarge the existing video SURFACE without QVideoWidget.setFullScreen().
+    def eventFilter(self, obj, event):
+        if getattr(self, "_video_fullscreen", False):
+            kind=event.type()
+            if obj is self.video_stage and kind == QEvent.Type.Resize:
+                self._position_fullscreen_overlay()
+            if kind == QEvent.Type.MouseMove and isinstance(obj, QWidget):
+                if obj is self or self.isAncestorOf(obj):
+                    self._show_fullscreen_overlay()
+        return super().eventFilter(obj,event)
 
-        Qt's native video window may freeze on Windows and some Linux compositors
-        when QVideoWidget is independently promoted to a fullscreen window. We
-        fullscreen the MAIN window instead and never reparent/rebind the player.
+    def _position_fullscreen_overlay(self):
+        if not hasattr(self,"fs_overlay"):
+            return
+        self.fs_overlay.setGeometry(self.video_stage.rect())
+        if self._video_fullscreen:
+            self.fs_overlay.raise_()
+
+    def _show_fullscreen_overlay(self):
+        if not self._video_fullscreen:
+            return
+        self._fs_fade.stop()
+        self._fs_opacity.setOpacity(1.0)
+        self._position_fullscreen_overlay()
+        self.fs_overlay.show()
+        self.fs_overlay.raise_()
+        self._fs_idle.start(3000)
+
+    def _begin_fullscreen_fade(self):
+        if not self._video_fullscreen:
+            return
+        if self.fs_seek.isSliderDown() or self.fs_volume.isSliderDown():
+            self._fs_idle.start(3000)
+            return
+        self._fs_fade.stop()
+        self._fs_fade.setStartValue(1.0)
+        self._fs_fade.setEndValue(0.0)
+        self._fs_fade.start()
+
+    def _hide_fullscreen_overlay(self):
+        if self._video_fullscreen and self._fs_opacity.opacity() < .05:
+            self.fs_overlay.hide()
+
+    def _sync_play_icons(self, *args):
+        playing=(self.player.playbackState()
+                 == QMediaPlayer.PlaybackState.PlayingState)
+        caption="Pausar" if playing else "Reproduzir"
+        icon="pause" if playing else "play"
+        self.play.setText(caption)
+        self.play.setIcon(icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
+        self.fs_play.setText(caption)
+        self.fs_play.setIcon(icon_for(icon,24,light=not getattr(self,"_theme_dark",True)))
+
+    def _sync_fullscreen_duration(self,duration):
+        self.fs_seek.setRange(0,max(0,duration))
+        self._sync_fullscreen_position(self.player.position())
+
+    def _sync_fullscreen_position(self,position):
+        if not self.fs_seek.isSliderDown():
+            self.fs_seek.setValue(position)
+        self.fs_time.setText(legacy.clock(position)+" / "+legacy.clock(self.player.duration()))
+
+    def _toggle_mute(self):
+        self.audio.setMuted(not self.audio.isMuted())
+        self._sync_volume_icon()
+
+    def _sync_volume_icon(self):
+        icon="mute" if self.audio.isMuted() else "volume"
+        self.volume_button.setIcon(icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
+        self.fs_volume_icon.setIcon(icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
+
+    def _sync_favorite_controls(self):
+        enabled=self.favorite.isEnabled()
+        self.fs_favorite.setEnabled(enabled)
+        self.fs_favorite.setText(self.favorite.text() if enabled else "Favoritar")
+
+    def _toggle_video_fullscreen(self):
+        """Fullscreen the SAME media surface, with floating controls over it.
+
+        Never reparent QVideoWidget, call its own setFullScreen(), or create a
+        second video sink: those operations froze video on some Qt backends.
         """
         if self._video_fullscreen:
             self._leave_video_fullscreen()
             return
-        self._video_fullscreen = True
-        self._fullscreen_was_maximized = self.isMaximized()
-        self._saved_panel_sizes = self.panels.sizes()
-        self._saved_minimum_size = self.minimumSize()
-        self.setMinimumSize(0, 0)
+        self._video_fullscreen=True
+        self._fullscreen_was_maximized=self.isMaximized()
+        self._saved_panel_sizes=self.panels.sizes()
+        self._saved_minimum_size=self.minimumSize()
+        self._saved_player_min_width=self.player_panel.minimumWidth()
+        layout=self.player_panel.layout()
+        self._saved_player_margin=layout.contentsMargins()
+        self._saved_player_spacing=layout.spacing()
+        self._saved_video_mode=self.video.aspectRatioMode()
+        self.setMinimumSize(0,0)
+        self.player_panel.setMinimumWidth(0)
+        self.player_panel.setStyleSheet(
+            "QFrame#panel {background:#000000;border:0;border-radius:0;}")
+        layout.setContentsMargins(0,0,0,0)
+        layout.setSpacing(0)
         self.sidebar.hide()
         self.header_widget.hide()
         self.categories_panel.hide()
@@ -761,22 +845,43 @@ class MainWindow(legacy.MainWindow):
         self.now.hide()
         self.video_title.hide()
         self.status.hide()
+        self.player_controls.hide()
+        self.player_actions.hide()
         self.menuBar().hide()
         self.outer_layout.setContentsMargins(0,0,0,0)
-        self.fullscreen_button.setText("⤢ Sair da tela cheia")
-        self.fullscreen_button.setToolTip("Voltar à janela (Esc ou F11)")
+        self.outer_layout.setSpacing(0)
+        # Fill the display, including ultrawide screens. This crops the edges
+        # of 16:9 content on 21:9 monitors instead of drawing black pillarboxes.
+        self.video.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatioByExpanding)
+        self.fs_content_label.setText(
+            self.playing.get("title","AURORA IPTV") if self.playing else "AURORA IPTV")
+        self._sync_play_icons()
+        self._sync_favorite_controls()
+        self._sync_volume_icon()
         self.showFullScreen()
+        self._show_fullscreen_overlay()
         self.video.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _leave_video_fullscreen(self):
         if not self._video_fullscreen:
             return
-        self._video_fullscreen = False
-        self.showNormal()
-        if self._fullscreen_was_maximized:
-            self.showMaximized()
-        if self._saved_minimum_size is not None:
-            self.setMinimumSize(self._saved_minimum_size)
+        self._video_fullscreen=False
+        self._fs_idle.stop()
+        self._fs_fade.stop()
+        self._fs_opacity.setOpacity(1.0)
+        self.fs_overlay.hide()
+        if self._saved_video_mode is not None:
+            self.video.setAspectRatioMode(self._saved_video_mode)
+        if self._saved_player_min_width is not None:
+            self.player_panel.setMinimumWidth(self._saved_player_min_width)
+        self.player_panel.setStyleSheet("")
+        layout=self.player_panel.layout()
+        if self._saved_player_margin is not None:
+            layout.setContentsMargins(self._saved_player_margin)
+        if self._saved_player_spacing is not None:
+            layout.setSpacing(self._saved_player_spacing)
+        self.outer_layout.setContentsMargins(16,15,16,15)
+        self.outer_layout.setSpacing(14)
         self.sidebar.show()
         self.header_widget.show()
         self.categories_panel.show()
@@ -784,25 +889,37 @@ class MainWindow(legacy.MainWindow):
         self.now.show()
         self.video_title.show()
         self.status.show()
+        self.player_controls.show()
+        self.player_actions.show()
         self.menuBar().show()
-        self.outer_layout.setContentsMargins(16,15,16,15)
+        if self._saved_minimum_size is not None:
+            self.setMinimumSize(self._saved_minimum_size)
+        self.showNormal()
+        if self._fullscreen_was_maximized:
+            self.showMaximized()
         if self._saved_panel_sizes:
             self.panels.setSizes(self._saved_panel_sizes)
-        self.fullscreen_button.setText("⛶ Tela cheia")
-        self.fullscreen_button.setToolTip("Tela cheia (F11) · sair com Esc")
         self.video.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _start(self, item):
         if item.get("url"):
             self.video_stage.setCurrentWidget(self.video)
         super()._start(item)
+        self._sync_play_icons()
+        self._sync_favorite_controls()
         if item.get("url"):
+            self.fs_content_label.setText(item.get("title","AURORA IPTV"))
             self.video.setFocus()
 
     def _toggle_play(self):
         if self.playing:
             self.video_stage.setCurrentWidget(self.video)
         super()._toggle_play()
+        self._sync_play_icons()
+
+    def _favorite(self):
+        super()._favorite()
+        self._sync_favorite_controls()
 
     def _player_error(self, error, error_string):
         super()._player_error(error,error_string)
@@ -1340,6 +1457,7 @@ class MainWindow(legacy.MainWindow):
         if usable:
             k,_,_ = self._favorite_key(row)
             self.favorite.setText("Remover favorito" if self.library.is_favorite(self.playlist_id,k) else "Favoritar")
+        self._sync_favorite_controls()
 
     def _open(self,widget):
         row = widget.data(Qt.ItemDataRole.UserRole)
