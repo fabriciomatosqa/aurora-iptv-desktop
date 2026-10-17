@@ -1003,7 +1003,7 @@ class MainWindow(legacy.MainWindow):
         self.enter_fullscreen_shortcut = QShortcut(QKeySequence("F11"),self,self._toggle_video_fullscreen)
         self.enter_fullscreen_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._advanced_keys = []
-        for key in ("F", "M", "Up", "Down", "Left", "Right"):
+        for key in ("F", "M"):
             shortcut = QShortcut(QKeySequence(key),self)
             shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
             shortcut.activated.connect(lambda k=key: self._player_key(k))
@@ -1051,6 +1051,17 @@ class MainWindow(legacy.MainWindow):
     def eventFilter(self, obj, event):
         if getattr(self, "_video_fullscreen", False):
             kind=event.type()
+            if kind == QEvent.Type.KeyPress:
+                focus = QApplication.focusWidget()
+                if not isinstance(focus, (QLineEdit, QTextBrowser, QComboBox, QSlider)):
+                    arrows = {
+                        Qt.Key.Key_Up: "Up", Qt.Key.Key_Down: "Down",
+                        Qt.Key.Key_Left: "Left", Qt.Key.Key_Right: "Right"
+                    }
+                    pressed = arrows.get(event.key())
+                    if pressed:
+                        self._player_key(pressed)
+                        return True
             if obj is self.video_stage and kind == QEvent.Type.Resize:
                 self._position_fullscreen_overlay()
             if kind == QEvent.Type.MouseMove and isinstance(obj, QWidget):
