@@ -140,27 +140,37 @@ class AuroraBanner(QFrame):
         p.setClipPath(clip)
         p.fillRect(self.rect(), QColor("#09253a"))
         if not self._image.isNull():
-            # KeepAspectRatioByExpanding, but crop from the source directly:
-            # this avoids the old distorted drawPixmap source rectangle.
-            img_w, img_h = self._image.width(), self._image.height()
-            source_aspect = img_w / img_h
-            target_aspect = w / h
-            if source_aspect > target_aspect:
-                crop_width = img_h * target_aspect
-                left = (img_w - crop_width) / 2
-                source = QRectF(left, 0, crop_width, img_h)
+            # Ambient panoramic wash supplies edge-to-edge aurora colour.
+            # Keep it faint: the original painting below must not be cropped.
+            iw, ih = self._image.width(), self._image.height()
+            aspect = iw / ih
+            ambient = QRectF(0, 0, iw, ih)
+            if aspect > w / h:
+                sw = ih * (w / h)
+                ambient = QRectF((iw - sw) / 2, 0, sw, ih)
             else:
-                crop_height = img_w / target_aspect
-                top = (img_h - crop_height) * 0.48
-                source = QRectF(0, top, img_w, crop_height)
-            p.drawPixmap(frame, self._image, source)
-        else:
-            backdrop = QLinearGradient(0, 0, w, h)
-            backdrop.setColorAt(0, QColor("#0b293e"))
-            backdrop.setColorAt(.42, QColor("#13677b"))
-            backdrop.setColorAt(.74, QColor("#364f8b"))
-            backdrop.setColorAt(1, QColor("#251a50"))
-            p.fillRect(self.rect(), backdrop)
+                sh = iw / (w / h)
+                ambient = QRectF(0, (ih - sh) / 2, iw, sh)
+            p.save()
+            p.setOpacity(.24)
+            p.drawPixmap(frame, self._image, ambient)
+            p.restore()
+            # The focal layer shows the COMPLETE artwork at its true aspect
+            # ratio, including on 21:9 and 32:9 monitors; extend the remaining
+            # width with the wash and gradients rather than applying 'cover'.
+            natural_width = min(float(w), h * aspect)
+            left = (w - natural_width) / 2
+            full_art = QRectF(left, 0, natural_width, h)
+            p.drawPixmap(full_art, self._image, QRectF(0, 0, iw, ih))
+            # A broad tonal fade avoids an obvious seam between the uncropped
+            # image and the low-contrast ambient artwork on either side.
+            feather = min(140.0, max(24.0, natural_width * .25))
+            for xpos, reverse in ((left, True), (left + natural_width - feather, False)):
+                blend = QLinearGradient(xpos, 0, xpos + feather, 0)
+                alpha = [(0, 215), (1, 0)] if reverse else [(0, 0), (1, 215)]
+                for offset, opacity in alpha:
+                    blend.setColorAt(offset, QColor(5, 19, 34, opacity))
+                p.fillRect(QRectF(xpos, 0, feather, h), blend)
         # Blend the photograph into the dark shell around the text. The
         # transparent right side preserves the full northern-lights artwork.
         overlay = QLinearGradient(0, 0, w, 0)
