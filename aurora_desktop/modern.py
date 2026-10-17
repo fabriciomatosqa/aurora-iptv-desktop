@@ -473,6 +473,10 @@ class Covers(QObject):
                 continue
             request=QNetworkRequest(QUrl(url))
             request.setTransferTimeout(9000)
+            request.setRawHeader(b"User-Agent",
+                                 b"Mozilla/5.0 (compatible; AuroraIPTVDesktop/0.6)")
+            request.setRawHeader(b"Accept",
+                                 b"image/png,image/jpeg,image/webp,image/*;q=0.8")
             self.active+=1
             reply=self.network.get(request)
             reply.downloadProgress.connect(
