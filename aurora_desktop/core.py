@@ -40,8 +40,9 @@ def content_id(url: str) -> str:
     return sha256(url.encode('utf-8')).hexdigest()
 
 
-def kind_of(group: str, title: str, url: str, type_hint: str = "") -> str:
-    return classify_content(title, group, url, type_hint)
+def kind_of(group: str, title: str, url: str, type_hint: str = "",
+            tvg_id: str = "", provider_kind: str = "") -> str:
+    return classify_content(title, group, url, type_hint, tvg_id, provider_kind)
 
 
 def parse_extinf(line: str) -> dict[str, str]:
@@ -129,7 +130,7 @@ def parse_m3u(lines: Iterable[str]) -> Iterator[Entry]:
             info = None
             continue
         name = info['title']
-        typ = kind_of(info['group'], name, url, info.get('type_hint', ''))
+        typ = kind_of(info['group'], name, url, info.get('type_hint', ''), info['tvg_id'])
         series, season, episode = episode_info(name) if typ == 'series' else ('', None, None)
         # Give films/series their actual cover priority while channels keep
         # the broadcaster logo. This field is persisted in the existing logo
