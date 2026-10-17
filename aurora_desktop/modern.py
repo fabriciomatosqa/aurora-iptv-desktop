@@ -156,13 +156,18 @@ class AuroraBanner(QFrame):
             p.setOpacity(.24)
             p.drawPixmap(frame, self._image, ambient)
             p.restore()
-            # The focal layer shows the COMPLETE artwork at its true aspect
-            # ratio, including on 21:9 and 32:9 monitors; extend the remaining
-            # width with the wash and gradients rather than applying 'cover'.
-            natural_width = min(float(w), h * aspect)
+            # Retain the pleasing small-window composition as a fixed focal
+            # PANORAMA: do not increase zoom every time the user widens the
+            # window. On ultrawide we extend the scene at the sides instead.
+            # The 5.7:1 crop matches the normal desktop banner composition.
+            focal_aspect = max(aspect, 5.7)
+            natural_width = min(float(w), h * focal_aspect)
             left = (w - natural_width) / 2
+            crop_height = min(float(ih), iw / focal_aspect)
+            top_crop = (ih - crop_height) * .48
+            focal_source = QRectF(0, top_crop, iw, crop_height)
             full_art = QRectF(left, 0, natural_width, h)
-            p.drawPixmap(full_art, self._image, QRectF(0, 0, iw, ih))
+            p.drawPixmap(full_art, self._image, focal_source)
             # A broad tonal fade avoids an obvious seam between the uncropped
             # image and the low-contrast ambient artwork on either side.
             feather = min(140.0, max(24.0, natural_width * .25))
