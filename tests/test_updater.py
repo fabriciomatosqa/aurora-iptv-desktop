@@ -228,3 +228,13 @@ def test_dated_release_native_metadata_and_debian_name():
         "aurora-iptv_0.6.0-date20261017.01_amd64.deb")
     assert debian_asset_name("v0.6.0-beta.14") == (
         "aurora-iptv_0.6.0-beta14_amd64.deb")
+
+
+def test_current_desktop_release_keeps_the_agreed_calendar_version_scheme():
+    """Guard against accidentally reverting to beta.N for future builds."""
+    from build_version import DATED_RE
+    assert DATED_RE.fullmatch(__version__), (
+        "Desktop releases must use X.Y.Z-DDMMAA.NN, e.g. 0.6.0-171026.01")
+    parsed=parse_version(__version__)
+    assert parsed is not None and parsed.date_stamp > 0
+    assert parsed.iteration >= 1
