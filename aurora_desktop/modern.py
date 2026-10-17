@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from . import app as legacy
 from .catalog import LibraryV2, guess_xtream_epg
 from .ui_icons import icon_for
+from .svg_icons import svg_icon_for
 
 # The original Qt player keeps the same settings, DB path, resuming and playlist management.
 legacy.Library = LibraryV2
@@ -95,16 +96,6 @@ class AuroraBanner(QFrame):
         layout=QVBoxLayout(self)
         layout.setContentsMargins(45,17,42,20)
         layout.setSpacing(7)
-        top=QHBoxLayout()
-        mark=QLabel("✦  AURORA EXPERIENCE")
-        mark.setObjectName("heroBadge")
-        top.addWidget(mark,0,Qt.AlignmentFlag.AlignLeft)
-        top.addStretch(1)
-        from . import __version__
-        version=QLabel(f"DESKTOP  /  v{__version__}")
-        version.setObjectName("heroVersion")
-        top.addWidget(version,0,Qt.AlignmentFlag.AlignRight)
-        layout.addLayout(top)
         layout.addStretch(1)
 
         brand=QHBoxLayout()
@@ -129,10 +120,6 @@ class AuroraBanner(QFrame):
         footnote.setObjectName("heroFootnote")
         text_column.addWidget(footnote)
         brand.addLayout(text_column,1)
-        quote=QLabel("Sua tela.\nSeu universo.")
-        quote.setObjectName("heroQuote")
-        quote.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        brand.addWidget(quote,0,Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(brand)
         layout.addStretch(1)
 
@@ -174,15 +161,15 @@ class AuroraBanner(QFrame):
         # Blend the photograph into the dark shell around the text. The
         # transparent right side preserves the full northern-lights artwork.
         overlay = QLinearGradient(0, 0, w, 0)
-        overlay.setColorAt(0, QColor(4, 16, 32, 242))
-        overlay.setColorAt(.30, QColor(5, 22, 40, 193))
-        overlay.setColorAt(.62, QColor(6, 24, 42, 32))
-        overlay.setColorAt(1, QColor(6, 22, 39, 100))
+        overlay.setColorAt(0, QColor(4, 16, 32, 197))
+        overlay.setColorAt(.27, QColor(5, 22, 40, 125))
+        overlay.setColorAt(.55, QColor(6, 24, 42, 18))
+        overlay.setColorAt(1, QColor(6, 22, 39, 32))
         p.fillRect(self.rect(), overlay)
         lower = QLinearGradient(0, 0, 0, h)
         lower.setColorAt(0, QColor(5, 19, 34, 55))
         lower.setColorAt(.67, QColor(5, 19, 34, 0))
-        lower.setColorAt(1, QColor(7, 22, 36, 180))
+        lower.setColorAt(1, QColor(7, 22, 36, 100))
         p.fillRect(self.rect(), lower)
         # A restrained aurora accent along the bottom ties into the panels.
         streak = QLinearGradient(0, 0, w, 0)
@@ -365,7 +352,7 @@ class MainWindow(legacy.MainWindow):
         self.header_widget = QWidget(root)
         self.header_widget.setObjectName("mainHeader")
         upper = QHBoxLayout(self.header_widget)
-        upper.setContentsMargins(8,8,8,0)
+        upper.setContentsMargins(0,0,0,0)
         upper.setSpacing(0)
         self.banner = AuroraBanner(self.header_widget)
         upper.addWidget(self.banner,1)
@@ -380,9 +367,9 @@ class MainWindow(legacy.MainWindow):
         sidebar.setObjectName("sidebar")
         sidebar.setFixedWidth(226)
         side = QVBoxLayout(sidebar)
-        side.setContentsMargins(18,22,18,20)
-        side.setSpacing(10)
-        side.addSpacing(8)
+        side.setContentsMargins(18,19,18,12)
+        side.setSpacing(11)
+        side.addSpacing(4)
         self.nav = {}
         for mode,title in [
             ("home","Início"),("live","Ao vivo"),("movie","Filmes"),
@@ -391,18 +378,19 @@ class MainWindow(legacy.MainWindow):
         ]:
             button = QPushButton(title)
             button.setObjectName("navButton")
-            button.setIcon(icon_for(mode))
-            button.setIconSize(QSize(24,24))
-            button.setMinimumHeight(48)
+            button.setIcon(svg_icon_for(mode,30))
+            button.setIconSize(QSize(30,30))
+            button.setMinimumHeight(57)
             button.setCheckable(True)
             button.setToolTip(title)
             button.clicked.connect(lambda checked=False,m=mode:self.navigate(m))
             self.nav[mode] = button
             side.addWidget(button)
         side.addStretch()
-        footer = QLabel("✦  Luzes da aurora, seu universo.")
-        footer.setObjectName("sidebarFooter")
-        footer.setWordWrap(True)
+        from . import __version__
+        footer = QLabel(f"DESKTOP  /  v{__version__}")
+        footer.setObjectName("versionFooter")
+        footer.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         side.addWidget(footer)
         base.addWidget(sidebar)
         self.sidebar = sidebar
@@ -501,16 +489,22 @@ class MainWindow(legacy.MainWindow):
         self.page = QLabel("")
         self.page.setObjectName("muted")
         content_layout.addWidget(self.page)
-        self.previous = QPushButton("← Voltar às séries")
+        self.previous = QPushButton("Voltar às séries")
+        self.previous.setIcon(svg_icon_for("back"))
+        self.previous.setIconSize(QSize(22,22))
         self.previous.clicked.connect(lambda:self.navigate("series"))
         content_layout.addWidget(self.previous)
         self.next = QPushButton()
         self.next.hide()
-        self.action = QPushButton("↻ Atualizar lista")
+        self.action = QPushButton("Atualizar lista")
+        self.action.setIcon(svg_icon_for("refresh"))
+        self.action.setIconSize(QSize(23,23))
         self.action.setObjectName("primary")
         self.action.clicked.connect(self._main_action)
         content_layout.addWidget(self.action)
-        self.second_action = QPushButton("⚙ Configurações")
+        self.second_action = QPushButton("Configurações")
+        self.second_action.setIcon(svg_icon_for("settings"))
+        self.second_action.setIconSize(QSize(23,23))
         self.second_action.clicked.connect(self._second_action)
         content_layout.addWidget(self.second_action)
         self.theme_select = QComboBox()
