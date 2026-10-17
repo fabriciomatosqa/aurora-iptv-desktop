@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
 
 from . import app as legacy
 from .catalog import LibraryV2, guess_xtream_epg
-from .ui_icons import icon_for
 from .svg_icons import svg_icon_for
 
 # The original Qt player keeps the same settings, DB path, resuming and playlist management.
@@ -75,7 +74,7 @@ class AuroraSeekSlider(QSlider):
             QStyle.SubControl.SC_SliderHandle,self)
         painter=QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        spark=icon_for("sparkle",21).pixmap(QSize(21,21))
+        spark=svg_icon_for("sparkle",21).pixmap(QSize(21,21))
         painter.drawPixmap(region.center()-QPoint(10,10),spark)
         painter.end()
 
@@ -243,7 +242,7 @@ class Covers(QObject):
         painter.setPen(QColor("#386c7c"))
         painter.setBrush(QBrush(gradient))
         painter.drawRoundedRect(1, 1, 82, 102, 11, 11)
-        symbol = icon_for(kind, 45).pixmap(QSize(45, 45))
+        symbol = svg_icon_for(kind, 45).pixmap(QSize(45, 45))
         painter.drawPixmap((84-symbol.width())//2, (104-symbol.height())//2, symbol)
         painter.end()
         return QIcon(pixmap)
@@ -569,14 +568,14 @@ class MainWindow(legacy.MainWindow):
         epg_text.setObjectName("muted")
         epg_text.setWordWrap(True)
         epg_layout.addWidget(epg_text)
-        config_epg=QPushButton("Configurar fonte EPG")
-        config_epg.setIcon(svg_icon_for("guide"))
-        config_epg.clicked.connect(self._configure_guide)
-        epg_layout.addWidget(config_epg)
-        update_epg=QPushButton("Atualizar agenda de futebol")
-        update_epg.setIcon(svg_icon_for("refresh"))
-        update_epg.clicked.connect(self._update_guide)
-        epg_layout.addWidget(update_epg)
+        self.config_epg_button=QPushButton("Configurar fonte EPG")
+        self.config_epg_button.setIcon(svg_icon_for("settings"))
+        self.config_epg_button.clicked.connect(self._configure_guide)
+        epg_layout.addWidget(self.config_epg_button)
+        self.update_epg_button=QPushButton("Atualizar agenda de futebol")
+        self.update_epg_button.setIcon(svg_icon_for("refresh"))
+        self.update_epg_button.clicked.connect(self._update_guide)
+        epg_layout.addWidget(self.update_epg_button)
         self.epg_settings.hide()
         content_layout.addWidget(self.epg_settings)
         self.settings_sections = {
@@ -683,7 +682,7 @@ class MainWindow(legacy.MainWindow):
         controls.setSpacing(10)
         self.play=QPushButton("Reproduzir")
         self.play.setObjectName("playButton")
-        self.play.setIcon(icon_for("play",22))
+        self.play.setIcon(svg_icon_for("play",22))
         self.play.setIconSize(QSize(22,22))
         self.play.clicked.connect(self._toggle_play)
         controls.addWidget(self.play)
@@ -701,19 +700,19 @@ class MainWindow(legacy.MainWindow):
         actions.setContentsMargins(0,0,0,0)
         actions.setSpacing(10)
         self.favorite=QPushButton("Favoritar")
-        self.favorite.setIcon(icon_for("favorites"))
+        self.favorite.setIcon(svg_icon_for("favorites"))
         self.favorite.setIconSize(QSize(22,22))
         self.favorite.clicked.connect(self._favorite)
         actions.addWidget(self.favorite)
         self.fullscreen_button=QPushButton("Tela cheia")
-        self.fullscreen_button.setIcon(icon_for("fullscreen"))
+        self.fullscreen_button.setIcon(svg_icon_for("fullscreen"))
         self.fullscreen_button.setIconSize(QSize(20,20))
         self.fullscreen_button.clicked.connect(self._toggle_video_fullscreen)
         self.fullscreen_button.setToolTip("Tela cheia (F11) · sair com Esc")
         actions.addWidget(self.fullscreen_button)
         self.volume_button=QPushButton()
         self.volume_button.setObjectName("volumeButton")
-        self.volume_button.setIcon(icon_for("volume",22))
+        self.volume_button.setIcon(svg_icon_for("volume",22))
         self.volume_button.setIconSize(QSize(22,22))
         self.volume_button.setToolTip("Ativar/desativar som")
         self.volume_button.clicked.connect(self._toggle_mute)
@@ -741,7 +740,7 @@ class MainWindow(legacy.MainWindow):
         self.fs_content_label.setObjectName("fsTitle")
         top_row.addWidget(self.fs_content_label,1)
         self.fs_top_exit=QPushButton("Sair da tela cheia")
-        self.fs_top_exit.setIcon(icon_for("exit-fullscreen",20))
+        self.fs_top_exit.setIcon(svg_icon_for("exit-fullscreen",20))
         self.fs_top_exit.clicked.connect(self._leave_video_fullscreen)
         top_row.addWidget(self.fs_top_exit)
         hud.addLayout(top_row)
@@ -764,19 +763,19 @@ class MainWindow(legacy.MainWindow):
         buttons=QHBoxLayout()
         buttons.setSpacing(12)
         self.fs_play=QPushButton("Reproduzir")
-        self.fs_play.setIcon(icon_for("play",24))
+        self.fs_play.setIcon(svg_icon_for("play",24))
         self.fs_play.setIconSize(QSize(24,24))
         self.fs_play.setObjectName("playButton")
         self.fs_play.clicked.connect(self._toggle_play)
         buttons.addWidget(self.fs_play)
         self.fs_favorite=QPushButton("Favoritar")
-        self.fs_favorite.setIcon(icon_for("sparkle",21))
+        self.fs_favorite.setIcon(svg_icon_for("favorites",21))
         self.fs_favorite.setIconSize(QSize(21,21))
         self.fs_favorite.clicked.connect(self._favorite)
         buttons.addWidget(self.fs_favorite)
         buttons.addStretch(1)
         self.fs_volume_icon=QPushButton()
-        self.fs_volume_icon.setIcon(icon_for("volume",22))
+        self.fs_volume_icon.setIcon(svg_icon_for("volume",22))
         self.fs_volume_icon.setIconSize(QSize(22,22))
         self.fs_volume_icon.setToolTip("Ativar/desativar som")
         self.fs_volume_icon.clicked.connect(self._toggle_mute)
@@ -789,7 +788,7 @@ class MainWindow(legacy.MainWindow):
         self.volume_slider.valueChanged.connect(self.fs_volume.setValue)
         buttons.addWidget(self.fs_volume)
         self.fs_exit=QPushButton("Sair da tela cheia")
-        self.fs_exit.setIcon(icon_for("exit-fullscreen",20))
+        self.fs_exit.setIcon(svg_icon_for("exit-fullscreen",20))
         self.fs_exit.clicked.connect(self._leave_video_fullscreen)
         buttons.addWidget(self.fs_exit)
         fs_box.addLayout(buttons)
@@ -905,9 +904,9 @@ class MainWindow(legacy.MainWindow):
         caption="Pausar" if playing else "Reproduzir"
         icon="pause" if playing else "play"
         self.play.setText(caption)
-        self.play.setIcon(icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
+        self.play.setIcon(svg_icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
         self.fs_play.setText(caption)
-        self.fs_play.setIcon(icon_for(icon,24,light=not getattr(self,"_theme_dark",True)))
+        self.fs_play.setIcon(svg_icon_for(icon,24,light=not getattr(self,"_theme_dark",True)))
 
     def _sync_fullscreen_duration(self,duration):
         self.fs_seek.setRange(0,max(0,duration))
@@ -924,8 +923,8 @@ class MainWindow(legacy.MainWindow):
 
     def _sync_volume_icon(self):
         icon="mute" if self.audio.isMuted() else "volume"
-        self.volume_button.setIcon(icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
-        self.fs_volume_icon.setIcon(icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
+        self.volume_button.setIcon(svg_icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
+        self.fs_volume_icon.setIcon(svg_icon_for(icon,22,light=not getattr(self,"_theme_dark",True)))
 
     def _sync_favorite_controls(self):
         enabled=self.favorite.isEnabled()
@@ -1440,11 +1439,15 @@ class MainWindow(legacy.MainWindow):
         self.previous.setIcon(svg_icon_for("back",24,light=not dark))
         self.action.setIcon(svg_icon_for("refresh",24,light=not dark))
         self.second_action.setIcon(svg_icon_for("manage",24,light=not dark))
-        self.favorite.setIcon(icon_for("favorites", 22, light=not dark))
-        self.fullscreen_button.setIcon(icon_for("fullscreen",20,light=not dark))
-        self.fs_top_exit.setIcon(icon_for("exit-fullscreen",20,light=not dark))
-        self.fs_exit.setIcon(icon_for("exit-fullscreen",20,light=not dark))
-        self.fs_favorite.setIcon(icon_for("sparkle",21,light=not dark))
+        self.favorite.setIcon(svg_icon_for("favorites", 22, light=not dark))
+        self.fullscreen_button.setIcon(svg_icon_for("fullscreen",20,light=not dark))
+        self.fs_top_exit.setIcon(svg_icon_for("exit-fullscreen",20,light=not dark))
+        self.fs_exit.setIcon(svg_icon_for("exit-fullscreen",20,light=not dark))
+        self.fs_favorite.setIcon(svg_icon_for("favorites",21,light=not dark))
+        self.config_epg_button.setIcon(svg_icon_for("settings",24,light=not dark))
+        self.update_epg_button.setIcon(svg_icon_for("refresh",24,light=not dark))
+        self.player_back.setIcon(svg_icon_for("back",20,light=not dark))
+        self.synopsis_button.setIcon(svg_icon_for("series",20,light=not dark))
         self._sync_play_icons()
         self._sync_volume_icon()
 
@@ -1661,7 +1664,7 @@ class MainWindow(legacy.MainWindow):
                 self._exhausted = True
             else:
                 if self.mode == "football":
-                    rows = self.library.football(self.playlist_id,None if query else self.selected_category,query,limit=61,offset=self.offset)
+                    rows = self.library.football(self.playlist_id,self.selected_category,query,limit=61,offset=self.offset)
                     # An empty EPG is not a list of fixtures. Sports channels
                     # remain accessible under Ao vivo; never label channels as matches.
                     self._exhausted = len(rows) <= 60
@@ -1669,7 +1672,7 @@ class MainWindow(legacy.MainWindow):
                         self.page.setText(
                             "Nenhuma partida identificada. Os canais continuam disponíveis em Ao vivo.")
                 else:
-                    rows = self.library.browse(self.playlist_id,self.mode,None if query else self.selected_category,query,limit=61,offset=self.offset)
+                    rows = self.library.browse(self.playlist_id,self.mode,self.selected_category,query,limit=61,offset=self.offset)
                     self._exhausted = len(rows) <= 60
                 self._add_many(rows[:60] if not self._exhausted else rows)
                 self.offset += min(len(rows),60)
@@ -1957,7 +1960,9 @@ class MainWindow(legacy.MainWindow):
         thread.finished.connect(self._guide_done)
         self.guide_thread,self.guide_worker = thread,worker
         self.football_refresh.setEnabled(False)
+        self.update_epg_button.setEnabled(False)
         self.football_refresh.setText("Atualizando...")
+        self.update_epg_button.setText("Atualizando...")
         self.status.setText("Lendo programação do guia XMLTV...")
         thread.start()
 
@@ -1988,7 +1993,9 @@ class MainWindow(legacy.MainWindow):
         self.guide_thread = None
         self.guide_worker = None
         self.football_refresh.setEnabled(True)
+        self.update_epg_button.setEnabled(True)
         self.football_refresh.setText("Atualizar")
+        self.update_epg_button.setText("Atualizar agenda de futebol")
 
     def _import_active(self):
         if self.thread is None or not self.thread.isRunning():
