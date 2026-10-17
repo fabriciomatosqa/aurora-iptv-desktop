@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import datetime
+import os
+import time
 from pathlib import Path
 import sys
 
@@ -20,6 +22,8 @@ from PySide6.QtWidgets import (
 from . import app as legacy
 from .catalog import LibraryV2, guess_xtream_epg
 from .svg_icons import svg_icon_for
+from .sports_data import fetch_score_updates, fixture_key, national_artwork
+from .football_widgets import BadgeLoader, FootballCardWidget
 
 # The original Qt player keeps the same settings, DB path, resuming and playlist management.
 legacy.Library = LibraryV2
@@ -208,6 +212,23 @@ class PlayerSplash(QFrame):
         description.setObjectName("splashDescription")
         layout.addWidget(description)
         layout.addStretch(2)
+
+
+class ScoreWorker(QObject):
+    completed = Signal(int, object)
+
+    def __init__(self, playlist_id: int, records: list[dict]):
+        super().__init__()
+        self.playlist_id = playlist_id
+        self.records = [dict(item) for item in records]
+
+    def run(self):
+        # Network lookup is isolated from Qt GUI and never sees credentials.
+        try:
+            updates = fetch_score_updates(self.records)
+        except Exception:
+            updates = {}
+        self.completed.emit(self.playlist_id, updates)
 
 
 class FootballLiveDelegate(QStyledItemDelegate):
@@ -635,6 +656,9 @@ class MainWindow(legacy.MainWindow):
         self.results = QListWidget()
         self.results.setObjectName("results")
         self.results.setIconSize(QSize(70,88))
+        self.badge_loader = BadgeLoader(self.results)
+        self._football_card_widgets = {}
+        self._football_updates = {}
         self._football_live_delegate = FootballLiveDelegate(self.results)
         self.results.setItemDelegate(self._football_live_delegate)
         self.results.setUniformItemSizes(True)
@@ -898,6 +922,14 @@ class MainWindow(legacy.MainWindow):
         self._search_timer.setInterval(240)
         self._search_timer.timeout.connect(self._refresh)
         self.guide_thread = None
+        self.score_thread = None
+        self.score_worker = None
+        self._score_request_playlist = None
+        self._score_last_started = 0.0
+        self._score_timer = QTimer(self)
+        self._score_timer.setInterval(60_000)
+        self._score_timer.timeout.connect(self._start_score_updates)
+        self._score_timer.start()
         self._live_badge_timer = QTimer(self)
         self._live_badge_timer.setInterval(700)
         self._live_badge_timer.timeout.connect(self._pulse_football_badge)
@@ -1529,6 +1561,7 @@ class MainWindow(legacy.MainWindow):
         self._refresh()
         if mode == "football" and self.playlist_id is not None:
             self._maybe_load_guide()
+            QTimer.singleShot(800, self._start_score_updates)
 
     def _set_update_channel(self, index):
         channel = self.update_channel.itemData(index)
@@ -1608,6 +1641,7 @@ class MainWindow(legacy.MainWindow):
         self.groups.blockSignals(False)
         self.selected_category = None
         self.offset = 0
+        self._football_card_widgets.clear()
         self.football_refresh.setVisible(self.mode == "football")
         self.guide_busy.setVisible(self.mode == "football" and bool(
             getattr(self, "guide_thread", None) and self.guide_thread.isRunning()))
@@ -1673,10 +1707,11 @@ class MainWindow(legacy.MainWindow):
     def _add_result(self,label,record):
         item = QListWidgetItem(label)
         item.setData(Qt.ItemDataRole.UserRole,record)
-        item.setSizeHint(QSize(0,141 if record.get("kind") == "football" else 106))
+        item.setSizeHint(QSize(0,170 if record.get("kind") == "football" else 106))
         item.setToolTip(label.replace("\n", " — "))
         self.results.addItem(item)
-        self.covers.enqueue(item,record.get("logo",""),record.get("kind","movie"))
+        if record.get("kind") != "football":
+            self.covers.enqueue(item,record.get("logo",""),record.get("kind","movie"))
         return item
 
     def _load_items(self,reset=False):
@@ -1782,9 +1817,14 @@ class MainWindow(legacy.MainWindow):
         for r in rows:
             title = r.get("title","")
             if self.mode == "football" and r.get("kind") == "football":
-                title = self._football_label(r)
-                if r.get("event_logo"):
-                    r = {**r, "logo": r["event_logo"]}
+                match_key = fixture_key(r)
+                r = {**r, **national_artwork(r), **self._football_updates.get(match_key, {})}
+                item = self._add_result(self._football_label(r), r)
+                card = FootballCardWidget(r, self.badge_loader,
+                                          dark=getattr(self, "_theme_dark", True))
+                self.results.setItemWidget(item, card)
+                self._football_card_widgets[match_key] = card
+                continue
             elif r.get("kind") == "football_channel":
                 title = "CANAL ESPORTIVO  ·  " + title
             elif r.get("kind") == "series" and self.mode != "episodes":
@@ -1796,7 +1836,68 @@ class MainWindow(legacy.MainWindow):
     def _pulse_football_badge(self):
         if self.mode == "football":
             self._football_live_delegate.pulse_on = not self._football_live_delegate.pulse_on
+            for card in self._football_card_widgets.values():
+                card.set_pulse(self._football_live_delegate.pulse_on)
             self.results.viewport().update()
+
+    def _start_score_updates(self):
+        if (self.mode != "football" or self.playlist_id is None
+                or not self.isVisible()
+                or os.environ.get("QT_QPA_PLATFORM") == "offscreen"
+                or os.environ.get("AURORA_SCORE_OFFLINE") == "1"):
+            return
+        if self.score_thread is not None and self.score_thread.isRunning():
+            return
+        if time.monotonic() - self._score_last_started < 54:
+            return
+        records = [self.results.item(n).data(Qt.ItemDataRole.UserRole)
+                   for n in range(min(self.results.count(),70))]
+        records = [row for row in records if isinstance(row,dict)
+                   and row.get("kind") == "football"]
+        if not records:
+            return
+        self._score_last_started = time.monotonic()
+        thread = QThread(self)
+        worker = ScoreWorker(self.playlist_id, records)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.completed.connect(self._scores_ready)
+        worker.completed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._scores_done)
+        self.score_thread, self.score_worker = thread, worker
+        self._score_request_playlist = self.playlist_id
+        thread.start()
+
+    def _scores_ready(self, playlist_id, updates):
+        if playlist_id != self.playlist_id:
+            return  # Playlist changed while network requests were in flight.
+        self._football_updates.update(updates)
+        if self.mode != "football":
+            return
+        selected = self.results.currentRow()
+        scroll = self.results.verticalScrollBar().value()
+        for n in range(self.results.count()):
+            item = self.results.item(n)
+            row = item.data(Qt.ItemDataRole.UserRole)
+            if not isinstance(row,dict) or row.get("kind") != "football":
+                continue
+            key = fixture_key(row)
+            if key not in updates:
+                continue
+            row = {**row, **updates[key]}
+            item.setData(Qt.ItemDataRole.UserRole, row)
+            item.setText(self._football_label(row))
+            card = self._football_card_widgets.get(key)
+            if card is not None:
+                card.update_record(row)
+        self.results.setCurrentRow(selected)
+        self.results.verticalScrollBar().setValue(scroll)
+
+    def _scores_done(self):
+        self.score_thread = None
+        self.score_worker = None
 
     def _near_end(self,value):
         scrollbar = self.results.verticalScrollBar()
@@ -2041,6 +2142,7 @@ class MainWindow(legacy.MainWindow):
                         break
             self._load_items(reset=True)
             self._restore_result_scroll(position)
+            QTimer.singleShot(800, self._start_score_updates)
 
     def _guide_failed(self,error):
         self.status.setText("Não foi possível atualizar a programação.")
@@ -2091,7 +2193,12 @@ class MainWindow(legacy.MainWindow):
             QMessageBox.information(self,"EPG em andamento","Aguarde a conclusão da atualização do guia.")
             event.ignore()
             return
+        if self.score_thread is not None and self.score_thread.isRunning():
+            self.status.setText("Consultando resultados esportivos; encerramento após a consulta.")
+            event.ignore()
+            return
         self._live_badge_timer.stop()
+        self._score_timer.stop()
         super().closeEvent(event)
 
 
