@@ -1,20 +1,26 @@
 # AURORA IPTV Desktop 0.6.0-beta.14
 
-## Acabamento visual e SVGs
-- Todos os ícones presentes na interface moderna, inclusive controles de play/pause, favoritos, áudio, tela cheia, banner e placeholders, usam o renderizador QtSvg com correção HiDPI introduzida na beta.13.
-- A opção Configurar EPG usa engrenagem, com paleta adequada aos temas claro e escuro.
-- A barra de progresso compacta no cabeçalho da agenda comunica a atualização do guia sem inventar porcentagens. Ambos os botões de atualização ficam desabilitados durante a consulta.
+## Futebol: placares reais e escudos adaptados do Android
+- Integra consultas assíncronas ao placar público disponibilizado pela ESPN, usando apenas campeonato e data, sem compartilhar URLs de playlists ou credenciais.
+- Atualiza os resultados enquanto a agenda Futebol está visível, com ciclo de 60 segundos e limite de consultas concorrentes; mantém as partidas carregadas, filtros e posição de rolagem.
+- Cruza nome exato das duas equipes, competição e data antes de mostrar placar ou minuto. Partidas com identificação ambígua permanecem sem resultado.
+- Adiciona cards com logotipo de competição, escudos separados de mandante e visitante, placar/tempo quando confirmados, canal de transmissão e horário local.
+- Para seleções, reaproveita quatro URLs de escudos já usadas no Android (Brasil/CBF, Argentina/AFA, EUA/US Soccer, Espanha/RFEF), com identificação FIFA na competição.
+- Mostra o estado do jogo separadamente do estado da transmissão no XMLTV. Nunca afirma que um canal está transmitindo um jogo simplesmente porque ele está acontecendo.
+- Em falhas de conexão ou dados indisponíveis, mantém os dados existentes, preserva o catálogo e informa estados ausentes ou desatualizados, sem inventar jogos.
+- Em Configurações → Guia de futebol, há opção para ativar/desativar as consultas online de placares e imagens esportivas.
 
-## Futebol e busca
-- Corrige o problema em que a busca removia o filtro do campeonato selecionado. A mesma correção se aplica a gêneros de Filmes e Séries.
-- Mostra um ponto verde pulsante somente durante a faixa de horário de transmissões sinalizadas como ao vivo pelo XMLTV; não afirma que o vídeo está transmitindo efetivamente a partida.
-- Preserva as correções da beta.13: confrontos reais associados a canais, sem canais genéricos como partidas; campeonatos disponíveis, busca por time, reprises quando identificadas, horário local HH:mm, retorno de navegação e sinopses quando há metadados.
+## Interface e regressões
+- Padroniza ícones de vídeo, áudio, fullscreen, Favoritos e navegação no mesmo renderizador SVG HiDPI.
+- Preserva a categoria e o campeonato ao fazer buscas.
+- Padroniza a engrenagem de Configurar EPG, adiciona progresso indeterminado e impede múltiplas atualizações simultâneas.
+- Mantém os ajustes da beta.13: partidas identificadas no XMLTV, reprises sinalizadas, horários HH:mm, navegação por histórico e sinopses quando disponíveis.
 
-## Qualidade e compatibilidade
-- Testes de regressão específicos para filtros combinados, SVGs, configuração do EPG, carregamento e indicação de ao vivo.
-- Validação por Pull Request em Windows e Linux, sem publicação automática antes da integração.
-- Mantém playlists M3U/M3U8, banco SQLite, favoritos, progresso, continuar assistindo, player em tela cheia e atualização online.
+## Testes e distribuição
+- Testes determinísticos para identidade de clubes e seleções, ausência de placares fictícios, fontes HTTPS permitidas, consultas limitadas, privacidade das playlists e atualização dos cards sem perda da seleção.
+- Builds Windows e Linux por GitHub Actions; instaladores são publicados após a integração e somente se os testes dos dois sistemas passarem.
+- Preserva SQLite, múltiplas playlists, favoritos, progresso, player e checagem de atualização.
 
-**Limitações conhecidas:** placares e minutos reais, confirmação independente de que a transmissão do canal está ao vivo, e os escudos/logotipos oficiais de equipes e campeonatos continuam dependentes de integração com fonte esportiva licenciada e identificadores exatos. Esses dados não são inventados. A imagem fornecida pelo próprio XMLTV pode continuar a ser mostrada.
+**Condições de uso:** o recurso consulta endpoints públicos utilizados no projeto Android, mas isso não é uma licença de exploração comercial. TheSportsDB exige uma assinatura paga para aplicativos publicados em lojas e uma assinatura não transfere direitos sobre os escudos de terceiros. As marcas/logotipos de clubes, confederações e campeonatos também exigem verificação de direitos antes de vender ou distribuir comercialmente o aplicativo. Veja docs/SPORTS_DATA_SOURCES.md.
 
-**Atualização:** a partir da beta.13, use Configurações → Atualizações quando a beta.14 estiver publicada. A instalação mantém o banco de dados do usuário.
+**Limites técnicos:** nenhuma API confirma automaticamente o conteúdo efetivo do stream IPTV. O aviso de transmissão vem do XMLTV; o placar vem do provedor esportivo. Nem toda competição, jogo ou federação dispõe de imagens e resultados verificáveis.
