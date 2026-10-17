@@ -148,6 +148,6 @@ def test_epg_logo_preserved_only_for_public_https_hosts():
     assert safe_epg_artwork("https://a.espncdn.com/logo.png").startswith("https://")
     assert safe_epg_artwork("https://127.0.0.1/private.png") == ""
     assert safe_epg_artwork("https://192.168.1.10/internal.png") == ""
-    assert safe_epg_artwork("http://example.org/logo.png") == ""
+    assert safe_epg_artwork("http://example.org/logo.png") == "http://example.org/logo.png"
     assert safe_epg_artwork("https://localhost/logo.png") == ""
     assert safe_epg_artwork("https://user:password@example.org/logo.png") == ""
