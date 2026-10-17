@@ -217,3 +217,24 @@ def test_all_player_and_epg_icons_are_svg_and_settings_have_correct_gear(tmp_pat
         assert win.guide_busy.minimum()==0 and win.guide_busy.maximum()==0
     finally:
         win.close()
+
+
+def test_live_epg_badge_animates_only_on_football_page(tmp_path,monkeypatch):
+    from aurora_desktop.modern import FootballLiveDelegate
+    monkeypatch.setenv("LOCALAPPDATA",str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME",str(tmp_path))
+    app=QApplication.instance() or QApplication([])
+    win=MainWindow()
+    try:
+        assert isinstance(win.results.itemDelegate(),FootballLiveDelegate)
+        assert win._live_badge_timer.isActive()
+        win.mode="football"
+        old=win._football_live_delegate.pulse_on
+        win._pulse_football_badge()
+        assert win._football_live_delegate.pulse_on != old
+        win.mode="movie"
+        old=win._football_live_delegate.pulse_on
+        win._pulse_football_badge()
+        assert win._football_live_delegate.pulse_on == old
+    finally:
+        win.close()
