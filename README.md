@@ -1,6 +1,16 @@
-# AURORA IPTV — Desktop 0.6.0-beta.13
+# AURORA IPTV — Desktop 0.6.0-beta.14
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
+
+## v0.6.0-beta.14 — SVGs do player, filtros combinados e EPG
+
+- Ícones de player, volume, tela cheia, favoritos e demais controles convertidos para SVG Qt de alta densidade.
+- Pesquisa dentro de um campeonato ou gênero preserva o filtro selecionado.
+- EPG usa engrenagem correta nas Configurações, barra de atualização indeterminada e botões desabilitados enquanto o guia carrega.
+- O marcador verde de **AO VIVO conforme EPG** pisca apenas quando a programação identifica a transmissão dentro do horário atual; isso não confirma a imagem reproduzida.
+- Ampliação dos testes automáticos em Windows e Linux.
+
+**Ainda pendente:** placares/minutos em tempo real e escudos oficiais. Uma integração confiável e com direitos de uso adequados será necessária; não há dados esportivos fictícios.
 
 ## v0.6.0-beta.13 — correção SVG, Futebol, histórico e sinopses
 
