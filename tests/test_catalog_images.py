@@ -5,7 +5,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 from pathlib import Path
 
 from aurora_desktop.artwork import (
-    image_cache_file, pick_best_art, xtream_stream_id,
+    image_cache_file, pick_best_art, valid_artwork, xtream_stream_id,
 )
 from aurora_desktop.core import parse_m3u
 from aurora_desktop.catalog import LibraryV2
@@ -43,6 +43,20 @@ def test_picker_reuses_series_poster_and_does_not_guess():
     key=image_cache_file(Path("/tmp"),"https://server.example/logo.png?token=private")
     assert key.suffix==".img" and "private" not in str(key)
 
+
+
+
+def test_windows_absolute_image_paths_before_url_parsing():
+    # GitHub Windows runner uses C:\\Users\\...; urlsplit would wrongly parse
+    # the drive letter as scheme='c' and leave every poster generic.
+    windows_path="C:"+chr(92)+"Users"+chr(92)+"runneradmin"+chr(92)+"AppData"+chr(92)+"poster.png"
+    assert valid_artwork(windows_path)==windows_path
+    assert valid_artwork("C:/Users/runneradmin/AppData/poster.png")=="C:/Users/runneradmin/AppData/poster.png"
+    assert pick_best_art({"kind":"movie","poster":windows_path})==windows_path
+    assert valid_artwork("relative/path/poster.png")==""
+    assert valid_artwork("c:relative-path.png")==""
+    assert valid_artwork("https://example.com/poster.png")=="https://example.com/poster.png"
+    assert valid_artwork("/tmp/poster.png")=="/tmp/poster.png"
 
 def test_stream_id_matches_only_explicit_xtream_paths():
     assert xtream_stream_id("https://provider.test/live/user/pass/123.ts","live")=="123"
@@ -138,6 +152,7 @@ def test_qt_cards_load_local_artwork_and_persisted_cache(tmp_path,monkeypatch):
     image.fill(QColor("#00ccaa"))
     local=tmp_path/"poster.png"
     assert image.save(str(local))
+    assert valid_artwork(str(local))==str(local)
     item=QListWidgetItem("Filme",widget)
     loader.enqueue(item,str(local),"movie")
     assert item.icon().cacheKey()!=loader.blanks["movie"].cacheKey()
