@@ -140,20 +140,46 @@ class AuroraBanner(QFrame):
         p.setClipPath(clip)
         p.fillRect(self.rect(), QColor("#09253a"))
         if not self._image.isNull():
-            # KeepAspectRatioByExpanding, but crop from the source directly:
-            # this avoids the old distorted drawPixmap source rectangle.
+            # Fit the *whole* source vertically. Widening a window must never
+            # crop the sky/mountains or zoom the source simply to fill its width.
             img_w, img_h = self._image.width(), self._image.height()
-            source_aspect = img_w / img_h
-            target_aspect = w / h
-            if source_aspect > target_aspect:
-                crop_width = img_h * target_aspect
-                left = (img_w - crop_width) / 2
-                source = QRectF(left, 0, crop_width, img_h)
+            fitted_w = img_w * h / img_h
+            left = (w - fitted_w) / 2
+            source = QRectF(0, 0, img_w, img_h)
+            if fitted_w >= w:
+                # Narrower windows can still display the whole image with
+                # slight empty margins filled by the existing aurora backdrop.
+                target_w = w
+                target_h = img_h * w / img_w
+                top = (h - target_h) / 2
+                p.drawPixmap(QRectF(0, top, target_w, target_h), self._image, source)
             else:
-                crop_height = img_w / target_aspect
-                top = (img_h - crop_height) * 0.48
-                source = QRectF(0, top, img_w, crop_height)
-            p.drawPixmap(frame, self._image, source)
+                # Mirror each end of the *same* image at the same scale.
+                # Reflection avoids seams and panoramic zoom on 21:9/32:9.
+                p.drawPixmap(QRectF(left, 0, fitted_w, h), self._image, source)
+                edge_left = left
+                edge_right = left + fitted_w
+                for index in range(1, 9):
+                    if edge_left <= 0 and edge_right >= w:
+                        break
+                    left_tile = QRectF(edge_left - fitted_w, 0, fitted_w, h)
+                    right_tile = QRectF(edge_right, 0, fitted_w, h)
+                    if index % 2:
+                        p.save()
+                        p.translate(edge_left, 0)
+                        p.scale(-1, 1)
+                        p.drawPixmap(QRectF(0, 0, fitted_w, h), self._image, source)
+                        p.restore()
+                        p.save()
+                        p.translate(edge_right, 0)
+                        p.scale(-1, 1)
+                        p.drawPixmap(QRectF(-fitted_w, 0, fitted_w, h), self._image, source)
+                        p.restore()
+                    else:
+                        p.drawPixmap(left_tile, self._image, source)
+                        p.drawPixmap(right_tile, self._image, source)
+                    edge_left -= fitted_w
+                    edge_right += fitted_w
         else:
             backdrop = QLinearGradient(0, 0, w, h)
             backdrop.setColorAt(0, QColor("#0b293e"))
