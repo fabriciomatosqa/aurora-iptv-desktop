@@ -648,6 +648,12 @@ class MainWindow(legacy.MainWindow):
             "football/online_data", True, type=bool))
         self.sports_online_checkbox.toggled.connect(self._sports_online_changed)
         epg_layout.addWidget(self.sports_online_checkbox)
+        self.sports_attribution = QLabel(
+            "Fontes: ESPN (resultados e escudos) e TheSportsDB (algumas federações). "
+            "Imagens e dados sujeitos aos direitos e condições de seus titulares.")
+        self.sports_attribution.setObjectName("muted")
+        self.sports_attribution.setWordWrap(True)
+        epg_layout.addWidget(self.sports_attribution)
         self.epg_settings.hide()
         content_layout.addWidget(self.epg_settings)
         self.settings_sections = {
