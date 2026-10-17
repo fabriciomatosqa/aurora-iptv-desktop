@@ -13,7 +13,7 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
-    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
+    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QDialog, QTextBrowser,
     QPushButton, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu, QGraphicsOpacityEffect, QStyleOptionSlider, QStyle,
 )
 
@@ -607,10 +607,10 @@ class MainWindow(legacy.MainWindow):
         self.page = QLabel("")
         self.page.setObjectName("muted")
         content_layout.addWidget(self.page)
-        self.previous = QPushButton("Voltar às séries")
+        self.previous = QPushButton("Voltar à categoria anterior")
         self.previous.setIcon(svg_icon_for("back"))
         self.previous.setIconSize(QSize(22,22))
-        self.previous.clicked.connect(lambda:self.navigate("series"))
+        self.previous.clicked.connect(self._go_back)
         content_layout.addWidget(self.previous)
         self.next = QPushButton()
         self.next.hide()
@@ -641,6 +641,20 @@ class MainWindow(legacy.MainWindow):
         self.video_title.setWordWrap(True)
         self.video_title.setObjectName("heading")
         play_layout.addWidget(self.video_title)
+        self.player_more = QHBoxLayout()
+        self.player_back = QPushButton("Voltar")
+        self.player_back.setIcon(svg_icon_for("back",20))
+        self.player_back.setToolTip("Retornar à categoria de origem")
+        self.player_back.clicked.connect(self._go_back)
+        self.player_more.addWidget(self.player_back)
+        self.synopsis_button = QPushButton("Sinopse")
+        self.synopsis_button.setIcon(svg_icon_for("series",20))
+        self.synopsis_button.setToolTip("Ler sinopse ou descrição dos metadados, se disponível")
+        self.synopsis_button.clicked.connect(self._show_synopsis)
+        self.player_more.addWidget(self.synopsis_button)
+        self.player_more.addStretch()
+        play_layout.addLayout(self.player_more)
+        self.synopsis_button.setVisible(False)
         self.video = QVideoWidget()
         self.video.setMinimumHeight(200)
         self.video.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -827,6 +841,7 @@ class MainWindow(legacy.MainWindow):
         self._saved_player_min_width = None
         self._saved_video_mode = None
         self.selected_category = None
+        self._browse_history = []
         self._loading_items = False
         self._exhausted = False
         self._indexed = set()
@@ -1012,6 +1027,8 @@ class MainWindow(legacy.MainWindow):
         self._sync_favorite_controls()
         if item.get("url"):
             self.fs_content_label.setText(item.get("title","AURORA IPTV"))
+            self.player_back.setVisible(True)
+            self.synopsis_button.setVisible(item.get("kind") in ("movie","series"))
             self.video.setFocus()
 
     def _toggle_play(self):
@@ -1523,6 +1540,7 @@ class MainWindow(legacy.MainWindow):
             "Buscar partidas por nome do time..." if self.mode == "football"
             else "Buscar canais, filmes, séries...")
         self.previous.setVisible(self.mode == "episodes")
+        self.player_back.setVisible(bool(self.playing))
         self._show_settings_section()
         self.covers.reset()
         self.groups.blockSignals(True)
@@ -1727,6 +1745,80 @@ class MainWindow(legacy.MainWindow):
             k,_,_ = self._favorite_key(row)
             self.favorite.setText("Remover favorito" if self.library.is_favorite(self.playlist_id,k) else "Favoritar")
         self._sync_favorite_controls()
+        self.synopsis_button.setVisible(bool(row and row.get("kind") in ("movie","series")))
+
+    def _remember_browse(self):
+        if self.mode not in ("series","movie","football","live","episodes"):
+            return
+        self._browse_history.append({
+            "mode":self.mode,
+            "series_name":self.series_name,
+            "category":self.selected_category,
+            "search":self.search.text(),
+            "scroll":self.results.verticalScrollBar().value(),
+        })
+        self._browse_history = self._browse_history[-20:]
+
+    def _go_back(self):
+        if not self._browse_history:
+            # Playback stays in the same section: returning simply focuses
+            # the browse list, preserving category, query and scroll.
+            if self._video_fullscreen:
+                self._leave_video_fullscreen()
+            self.results.setFocus()
+            return
+        history=self._browse_history.pop()
+        self.series_name=history["series_name"]
+        self.navigate(history["mode"])
+        if history["search"]:
+            self.search.blockSignals(True)
+            self.search.setText(history["search"])
+            self.search.blockSignals(False)
+        if history["category"] is not None:
+            for n in range(self.groups.count()):
+                item=self.groups.item(n)
+                if item.data(Qt.ItemDataRole.UserRole)==history["category"]:
+                    self.groups.setCurrentRow(n)
+                    break
+        else:
+            self._load_items(reset=True)
+        self._restore_result_scroll(history["scroll"])
+        self.status.setText("Retornou à categoria anterior.")
+
+    def _restore_result_scroll(self, position):
+        # Incremental catalogs may need more results before restoring scroll.
+        for _ in range(10):
+            bar=self.results.verticalScrollBar()
+            if bar.maximum() >= position or self._exhausted:
+                break
+            old=self.offset
+            self._load_items()
+            if self.offset == old:
+                break
+        self.results.verticalScrollBar().setValue(
+            min(position,self.results.verticalScrollBar().maximum()))
+
+    def _show_synopsis(self):
+        row=self.selected or self.playing or {}
+        if row.get("kind") not in ("movie","series"):
+            return
+        text=(row.get("synopsis") or "").strip() or "Sinopse não disponível."
+        dialog=QDialog(self)
+        dialog.setWindowTitle("AURORA IPTV · Sinopse")
+        dialog.resize(600,420)
+        layout=QVBoxLayout(dialog)
+        heading=QLabel(row.get("series_name") or row.get("title") or "Conteúdo")
+        heading.setObjectName("heading")
+        heading.setWordWrap(True)
+        layout.addWidget(heading)
+        browser=QTextBrowser()
+        browser.setPlainText(text)
+        browser.setReadOnly(True)
+        layout.addWidget(browser,1)
+        close=QPushButton("Fechar")
+        close.clicked.connect(dialog.accept)
+        layout.addWidget(close)
+        dialog.exec()
 
     def _open(self,widget):
         row = widget.data(Qt.ItemDataRole.UserRole)
@@ -1742,6 +1834,7 @@ class MainWindow(legacy.MainWindow):
                 self.status.setText("O EPG não identificou um canal desta lista para o jogo selecionado.")
             return
         if row.get("kind") == "series" and self.mode not in ("episodes", "home"):
+            self._remember_browse()
             self.series_name = row.get("series_name") or row["title"]
             self.mode = "episodes"
             self._refresh()
