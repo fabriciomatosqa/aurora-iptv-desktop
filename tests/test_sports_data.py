@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from aurora_desktop.sports_data import (
     FIFA_BADGE, country_key, fetch_score_updates, fixture_key, league_slug,
     match_score, national_artwork, parse_scoreboard, parse_team_roster, roster_badge,
-    safe_artwork, team_key,
+    safe_artwork, safe_epg_artwork, team_key,
 )
 
 
@@ -141,3 +141,13 @@ def test_espn_team_roster_fills_logos_even_without_score():
     assert result[fixture_key(fixture_row)]["away_badge"].endswith("/456.png")
     assert any("/teams?limit=100" in u for u in urls)
     assert len(urls) <= 12
+
+
+def test_epg_logo_preserved_only_for_public_https_hosts():
+    assert safe_epg_artwork("https://example.org/football/league.png").endswith("league.png")
+    assert safe_epg_artwork("https://a.espncdn.com/logo.png").startswith("https://")
+    assert safe_epg_artwork("https://127.0.0.1/private.png") == ""
+    assert safe_epg_artwork("https://192.168.1.10/internal.png") == ""
+    assert safe_epg_artwork("http://example.org/logo.png") == ""
+    assert safe_epg_artwork("https://localhost/logo.png") == ""
+    assert safe_epg_artwork("https://user:password@example.org/logo.png") == ""
