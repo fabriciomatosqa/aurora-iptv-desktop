@@ -104,7 +104,7 @@ def test_footer_update_button_is_clickable_and_primary_icon_has_contrast(tmp_pat
         # Without a playlist the action is "Adicionar URL M3U".
         assert window.action.icon().cacheKey()==svg_icon_for("add",24,light=True).cacheKey()
         playlist=tmp_path/"sample.m3u"
-        playlist.write_text("#EXTM3U\\n#EXTINF:-1 group-title=\\\"Filmes\\\",Um filme\\nhttps://example.org/movie/1.mp4\\n",
+        playlist.write_text('#EXTM3U\n#EXTINF:-1 group-title="Filmes",Um filme\nhttps://example.org/movie/1.mp4\n',
                             encoding="utf-8")
         pid=window.library.add_playlist("Teste",str(playlist))
         window.library.import_playlist(pid)
