@@ -22,6 +22,17 @@
 - Correções persistem em tabela SQLite própria e sobrevivem à atualização; itens por URL não são duplicados, favoritos/progresso permanecem válidos.
 - Reclassificação incremental v6 (lotes de 1200 itens), sem baixar novamente o catálogo original só para migrar.
 
+## Atualizações e experiência da interface
+- Correção da consulta automática: a beta.14 registrava um prazo de 24h mesmo antes de terminar uma consulta, podendo perder versões publicadas durante o dia.
+- A partir desta versão, as verificações bem-sucedidas têm intervalo de até 30 minutos; falhas de conexão permitem uma nova tentativa depois de cinco minutos, sem bloquear por 24h.
+- Enquanto o aplicativo estiver aberto, uma verificação automática é agendada a cada 30 minutos. A escolha de canal Beta/Estável é respeitada.
+- Novo botão SVG no rodapé, imediatamente à direita da versão, para verificar manualmente atualizações sem abrir Configurações.
+- Ícone da ação **Atualizar playlist** com contraste alto em fundo verde/turquesa.
+- O painel do player passa a mostrar a sinopse ou descrição disponível do item selecionado quando não houver vídeo em execução. Falta de sinopse é indicada explicitamente; nenhum resumo é fabricado.
+- O vídeo e PiP em execução não são substituídos pela sinopse ao navegar; a visualização de resumo retorna ao fechar ou terminar a reprodução.
+
+**Diagnóstico da transição beta.14 → beta.15:** não havia versão beta.15 publicada em GitHub Releases no momento da inspeção. Compilações candidatas do PR não são consideradas versões instaláveis. O aplicativo só pode oferecer uma nova versão depois que o Release com seus instaladores verificados estiver publicado.
+
 ## Qualidade e compatibilidade
 - Testes automáticos Linux/Windows abrangendo PiP, fullscreen, proporção, banner e migração de catálogo.
 - Preservam-se as implementações da beta.14: EPG, futebol, placares quando disponíveis, reprodução, sinopses, atualizações e preferências.
