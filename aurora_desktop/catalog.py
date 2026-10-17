@@ -241,6 +241,9 @@ class LibraryV2(Library):
             fcols = {r["name"] for r in db.execute("PRAGMA table_info(football_events)")}
             if "broadcast" not in fcols:
                 db.execute("ALTER TABLE football_events ADD COLUMN broadcast TEXT NOT NULL DEFAULT 'unknown'")
+            for key in ("home_team", "away_team", "event_logo"):
+                if key not in fcols:
+                    db.execute(f"ALTER TABLE football_events ADD COLUMN {key} TEXT NOT NULL DEFAULT ''")
 
     def import_playlist(self, playlist_id: int, source: str | None = None) -> int:
         count = super().import_playlist(playlist_id, source, merge=True)
@@ -415,13 +418,10 @@ class LibraryV2(Library):
                 elem.clear()
                 continue
             # Keep supporting existing XMLTV feeds with minimal titles and no category.
-            if details is None and not category and not FOOTBALL.search(title) and not MATCH.search(title):
-                elem.clear()
-                continue
-            if details is None and not MATCH.search(name):
-                elem.clear()
-                continue
-            if details is None and category and not FOOTBALL.search(category+" "+title):
+            # A fixture must have two identifiable opponents. Mere sports
+            # channel names, summaries, commentary, or anonymous titles
+            # never become events in the Futebol page.
+            if details is None:
                 elem.clear()
                 continue
             if not name:
@@ -441,17 +441,20 @@ class LibraryV2(Library):
             broadcast = "replay" if replay else "live" if live else "unknown"
             external_id = elem.get("channel","")
             channel = channel_map.get(external_id,external_id)
+            provider_icon = next((node.attrib.get("src","") for node in elem
+                                 if node.tag == "icon"), "")
+            provider_icon = provider_icon if urlparse(provider_icon).scheme in ("https","http") else ""
             events.append((playlist_id,channel,begin.isoformat(),
                            (stop or begin+timedelta(hours=2)).isoformat(),
-                           name,competition,broadcast))
+                           name,competition,broadcast,details.home,details.away,provider_icon))
             elem.clear()
             if len(events) > 15_000:
                 raise ValueError("O guia contém partidas demais; verifique a fonte XMLTV.")
         with self.connect() as db:
             db.execute("DELETE FROM football_events WHERE playlist_id=?", (playlist_id,))
             db.executemany("""INSERT OR REPLACE INTO football_events
-                (playlist_id,channel_id,start,end,title,competition,broadcast)
-                VALUES (?,?,?,?,?,?,?)""", events)
+                (playlist_id,channel_id,start,end,title,competition,broadcast,home_team,away_team,event_logo)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""", events)
         return len(events)
 
     @staticmethod
