@@ -7,7 +7,8 @@ a short moment to rebind their rendering surface.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QSize, QEvent, QTimer, Signal
-from PySide6.QtWidgets import (QWidget, QVideoWidget, QVBoxLayout, QHBoxLayout,
+from PySide6.QtMultimediaWidgets import QVideoWidget
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                                QLabel, QPushButton, QCheckBox, QSlider, QApplication)
 from PySide6.QtGui import QShortcut, QKeySequence
 
