@@ -1952,7 +1952,21 @@ class MainWindow(legacy.MainWindow):
     def _guide_ok(self,count):
         self.status.setText(f"Guia atualizado: {count} partidas encontradas.")
         if self.mode == "football":
+            category = self.selected_category
+            search = self.search.text()
+            position = self.results.verticalScrollBar().value()
             self._refresh()
+            if search:
+                self.search.blockSignals(True)
+                self.search.setText(search)
+                self.search.blockSignals(False)
+            if category:
+                for n in range(self.groups.count()):
+                    if self.groups.item(n).data(Qt.ItemDataRole.UserRole) == category:
+                        self.groups.setCurrentRow(n)
+                        break
+            self._load_items(reset=True)
+            self._restore_result_scroll(position)
 
     def _guide_failed(self,error):
         self.status.setText("Não foi possível atualizar a programação.")
