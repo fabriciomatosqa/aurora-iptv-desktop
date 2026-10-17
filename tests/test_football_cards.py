@@ -14,7 +14,7 @@ class DummyBadgeLoader:
     def __init__(self):
         self.loaded = []
 
-    def attach(self, label, url):
+    def attach(self, label, url, *, allow_epg=False):
         self.loaded.append(url)
 
 
