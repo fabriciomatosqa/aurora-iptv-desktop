@@ -120,14 +120,14 @@ def safe_artwork(url: str) -> str:
 
 
 def safe_epg_artwork(url: str) -> str:
-    """Preserve artwork from trusted playlist XMLTV while rejecting local targets.
+    """Preserve artwork from playlist XMLTV while rejecting local targets.
 
     Only displayed locally; URL is never forwarded to score services.
     """
     try:
         parsed = urlparse(url)
         host = (parsed.hostname or "").lower()
-        if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+        if parsed.scheme not in ("https", "http") or not host or parsed.username or parsed.password:
             return ""
         if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
             return ""
