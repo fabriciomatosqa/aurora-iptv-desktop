@@ -39,8 +39,8 @@ def content_id(url: str) -> str:
     return sha256(url.encode('utf-8')).hexdigest()
 
 
-def kind_of(group: str, title: str, url: str, type_hint: str = "") -> str:
-    return classify_content(title, group, url, type_hint)
+def kind_of(group: str, title: str, url: str, type_hint: str = "", tvg_id: str = "") -> str:
+    return classify_content(title, group, url, type_hint, tvg_id)
 
 
 def parse_extinf(line: str) -> dict[str, str]:
@@ -127,7 +127,7 @@ def parse_m3u(lines: Iterable[str]) -> Iterator[Entry]:
             info = None
             continue
         name = info['title']
-        typ = kind_of(info['group'], name, url, info.get('type_hint', ''))
+        typ = kind_of(info['group'], name, url, info.get('type_hint', ''), info.get('tvg_id', ''))
         series, season, episode = episode_info(name) if typ == 'series' else ('', None, None)
         yield Entry(content_id(url), name, url, info['group'], typ, info['logo'], series, season, episode,
                     info['tvg_id'], info.get('type_hint', ''), info.get('synopsis', ''))
