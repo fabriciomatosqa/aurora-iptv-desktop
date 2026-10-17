@@ -176,7 +176,12 @@ def test_update_status_is_consumed_once(tmp_path,monkeypatch):
 
 def test_single_version_source_for_windows_and_debian(tmp_path):
     native,deb=native_versions(__version__)
-    assert deb==__version__.replace("-beta.","~beta").replace("-rc.","~rc")
+    from build_version import DATED_RE
+    if (found := DATED_RE.fullmatch(__version__)):
+        a,b,c,datecode,seq = found.groups()
+        assert deb == f"{a}.{b}.{c}~date20{datecode[4:]}{datecode[2:4]}{datecode[:2]}.{seq}"
+    else:
+        assert deb == __version__.replace("-beta.","~beta").replace("-rc.","~rc")
     assert native[:3]==(0,6,0)
     prepare(tmp_path)
     assert __version__ in (tmp_path/"windows_version.txt").read_text()
@@ -223,3 +228,13 @@ def test_dated_release_native_metadata_and_debian_name():
         "aurora-iptv_0.6.0-date20261017.01_amd64.deb")
     assert debian_asset_name("v0.6.0-beta.14") == (
         "aurora-iptv_0.6.0-beta14_amd64.deb")
+
+
+def test_current_desktop_release_keeps_the_agreed_calendar_version_scheme():
+    """Guard against accidentally reverting to beta.N for future builds."""
+    from build_version import DATED_RE
+    assert DATED_RE.fullmatch(__version__), (
+        "Desktop releases must use X.Y.Z-DDMMAA.NN, e.g. 0.6.0-171026.01")
+    parsed=parse_version(__version__)
+    assert parsed is not None and parsed.date_stamp > 0
+    assert parsed.iteration >= 1

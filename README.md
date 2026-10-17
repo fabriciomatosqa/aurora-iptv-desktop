@@ -1,6 +1,18 @@
-# AURORA IPTV — Desktop 0.6.0-beta.15
+# AURORA IPTV — Desktop 0.6.0-171026.01
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
+
+## Padrão de versões e atualização automática
+
+O formato oficial voltou a ser `vMAJOR.MINOR.PATCH-DDMMAA.NN`. Exemplo:
+`v0.6.0-171026.01` identifica a primeira publicação de **17/10/2026**;
+no mesmo dia, use `.02`, `.03` etc. No dia seguinte, a sequência volta para `.01`.
+O GitHub Releases, o instalador e a interface usam a mesma versão central de
+`aurora_desktop/__init__.py`. Tags antigas `v0.6.0-beta.N` continuam reconhecidas.
+
+Para não interromper instalações beta antigas, a beta.15 serve como versão
+de transição, permitindo descobrir as novas tags datadas. Cada publicação
+depende de aprovação dos testes Windows e Linux e de instaladores com SHA-256.
 
 ## v0.6.0-beta.14 — SVGs do player, filtros combinados e EPG
 
