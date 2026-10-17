@@ -876,6 +876,14 @@ class MainWindow(legacy.MainWindow):
         self.fs_top_exit.setIcon(svg_icon_for("exit-fullscreen",20))
         self.fs_top_exit.clicked.connect(self._leave_video_fullscreen)
         top_row.addWidget(self.fs_top_exit)
+        self.fs_back_button=QPushButton("Voltar")
+        self.fs_back_button.setIcon(svg_icon_for("back",20))
+        self.fs_back_button.clicked.connect(self._fullscreen_go_back)
+        top_row.addWidget(self.fs_back_button)
+        self.fs_close_button=QPushButton("Fechar vídeo")
+        self.fs_close_button.setIcon(svg_icon_for("close",20))
+        self.fs_close_button.clicked.connect(self._close_video)
+        top_row.addWidget(self.fs_close_button)
         self.fs_pip=QPushButton("PiP")
         self.fs_pip.setIcon(svg_icon_for("pip",20))
         self.fs_pip.clicked.connect(self._enter_pip)
@@ -1111,7 +1119,11 @@ class MainWindow(legacy.MainWindow):
     def _begin_fullscreen_fade(self):
         if not self._video_fullscreen:
             return
-        if self.fs_seek.isSliderDown() or self.fs_volume.isSliderDown():
+        if (self.fs_seek.isSliderDown() or self.fs_volume.isSliderDown()
+                or self.fs_bottom.underMouse()
+                or self.fs_center_play.underMouse()
+                or self.fs_top_exit.underMouse()
+                or self.fs_back_button.underMouse()):
             self._fs_idle.start(3000)
             return
         if any(menu.isVisible() for menu in (
@@ -1147,6 +1159,24 @@ class MainWindow(legacy.MainWindow):
         if not self.fs_seek.isSliderDown():
             self.fs_seek.setValue(position)
         self.fs_time.setText(legacy.clock(position)+" / "+legacy.clock(self.player.duration()))
+
+    def _fullscreen_go_back(self):
+        self._leave_video_fullscreen()
+        self._go_back()
+
+    def _close_video(self):
+        self._save_progress()
+        if self._video_fullscreen:
+            self._leave_video_fullscreen()
+        if self._pip_window is not None:
+            self._exit_pip()
+        self.player.stop()
+        self.playing=None
+        self.selected=None
+        self.video_stage.setCurrentWidget(self.player_splash)
+        self.video_title.setText("Escolha um conteúdo")
+        self.status.setText("Player fechado. Escolha outro conteúdo.")
+        self._sync_stream_capabilities()
 
     def _stream_seekable(self):
         row=self.playing or {}
@@ -2438,7 +2468,7 @@ class MainWindow(legacy.MainWindow):
     def _index_done(self):
         self.index_thread = None
         self.index_worker = None
-        if (self.playlist_id is not None and self.mode in ("live","movie","series")
+        if (self.playlist_id is not None and self.mode in ("live","movie","series","uncategorized")
                 and self.playlist_id not in self._indexed
                 and self.playlist_id not in self._index_error):
             self._refresh()
