@@ -2695,12 +2695,14 @@ class MainWindow(legacy.MainWindow):
     def closeEvent(self,event):
         controller = getattr(self, "update_controller", None)
         if controller is not None:
-            if controller.downloader is not None and controller.downloader.isRunning():
+            downloader=getattr(controller,"downloader",None)
+            checker=getattr(controller,"checker",None)
+            if downloader is not None and downloader.isRunning():
                 controller.shutdown()
                 self.status.setText("Cancelando download de atualização antes de sair...")
                 event.ignore()
                 return
-            if controller.checker is not None and controller.checker.isRunning():
+            if checker is not None and checker.isRunning():
                 self.status.setText("Aguarde a verificação de atualizações terminar.")
                 event.ignore()
                 return
