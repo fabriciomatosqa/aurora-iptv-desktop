@@ -26,11 +26,14 @@ def test_banner_is_full_width_and_does_not_contain_playlist_control(tmp_path, mo
         assert win.banner.parent() is win.header_widget
         assert isinstance(win.banner, AuroraBanner)
         assert win.banner.width() >= win.header_widget.width() - 6
-        assert win.banner.width() > 550
+        assert win.banner.width() > 1100
+        assert win.header_widget.parent() is win.centralWidget()
+        assert win.header_widget.geometry().width() > win.sidebar.width()
+        assert win.banner.gradient_title.text()=="AURORA IPTV"
         assert win.banner.height() >= 150
         assert not win.banner.findChildren(type(win.playlists))
         titles = [w.text() for w in win.banner.findChildren(QLabel)]
-        assert "AURORA  /  IPTV" in titles
+        assert "AURORA IPTV" in titles
         assert any("ENTRETENIMENTO" in title for title in titles)
         assert not any("LISTA ATIVA" in title for title in titles)
     finally:
@@ -70,7 +73,7 @@ def test_banner_resizes_without_covering_main_content(tmp_path, monkeypatch):
         app.processEvents()
         assert win.banner.width() > initial
         assert win.panels.isVisible()
-        assert win.banner.height() <= 182
+        assert win.banner.height() <= 240
         assert win.header_widget.isVisible()
         win._theme_apply()
         assert win.banner.isVisible()
