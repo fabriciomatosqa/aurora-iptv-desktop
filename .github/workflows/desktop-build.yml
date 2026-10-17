@@ -22,6 +22,8 @@ on:
       - 'build_linux.sh'
       - 'installer_windows.iss'
       - '.github/workflows/desktop-build.yml'
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
