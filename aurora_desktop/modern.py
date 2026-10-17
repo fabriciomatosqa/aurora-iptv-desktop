@@ -585,6 +585,11 @@ class MainWindow(legacy.MainWindow):
         refresh_button.setIcon(svg_icon_for("refresh"))
         refresh_button.clicked.connect(self._import_active)
         manage_buttons.addWidget(refresh_button)
+        review_button=QPushButton("Revisar conteúdos não classificados")
+        review_button.setIcon(svg_icon_for("manage"))
+        review_button.setToolTip("Corrigir manualmente o tipo de itens sem metadados suficientes")
+        review_button.clicked.connect(lambda:self.navigate("uncategorized"))
+        manage_buttons.addWidget(review_button)
         playlist_layout.addLayout(manage_buttons)
         content_layout.addWidget(self.playlist_settings)
 
@@ -1926,7 +1931,7 @@ class MainWindow(legacy.MainWindow):
             "home":"Continuar assistindo", "live":"Canais disponíveis",
             "movie":"Filmes", "series":"Séries", "episodes":self.series_name,
             "favorites":"Favoritos", "settings":"Playlists e preferências",
-            "football":"Agenda de futebol",
+            "football":"Agenda de futebol", "uncategorized":"Não classificados",
         }
         self.heading.setText(titles.get(self.mode,"AURORA IPTV"))
         self.groups_title.setText("CLASSIFICAÇÃO" if self.mode != "football" else "CAMPEONATOS")
@@ -1969,16 +1974,18 @@ class MainWindow(legacy.MainWindow):
             self.subtitle.setText("Agenda do EPG e canais esportivos disponíveis.")
         elif self.mode == "series":
             self.subtitle.setText("Gêneros de séries, plataformas e categorias da playlist.")
+        elif self.mode == "uncategorized":
+            self.subtitle.setText("Itens com tipo incerto. Clique com o botão direito para classificar sem alterar a playlist original.")
         else:
             self.subtitle.setText("Escolha uma categoria; a lista carrega conforme você rola.")
-        if self.playlist_id is not None and self.mode in ("live","movie","series") and self.playlist_id not in self._indexed:
+        if self.playlist_id is not None and self.mode in ("live","movie","series","uncategorized") and self.playlist_id not in self._indexed:
             self.results.clear()
             self.groups.clear()
             self.page.setText("Organizando as categorias em segundo plano...")
             if self.playlist_id not in self._index_error:
                 self._start_index(self.playlist_id)
             return
-        if self.mode in ("live","movie","series") and self.playlist_id is not None:
+        if self.mode in ("live","movie","series","uncategorized") and self.playlist_id is not None:
             categories = self.library.categories(self.playlist_id,self.mode)
             choices = [(f"Todos ({sum(g['total'] for g in categories):,})",None)]
             choices += [(f"{g['title']}  ·  {g['total']:,}",g["title"]) for g in categories]
@@ -2217,6 +2224,39 @@ class MainWindow(legacy.MainWindow):
         if scrollbar.maximum() - value < 420 and self.mode in ("live","movie","series","football"):
             self._load_items()
 
+    def _context(self,position):
+        if self.mode == "settings":
+            return super()._context(position)
+        if self.mode not in ("live","movie","series","uncategorized"):
+            return
+        item=self.results.itemAt(position)
+        if item is None or self.playlist_id is None:
+            return
+        row=item.data(Qt.ItemDataRole.UserRole)
+        if (not isinstance(row,dict) or not row.get("key")
+                or row.get("kind") in ("playlist","empty","football")
+                or (row.get("kind")=="series" and self.mode=="series")):
+            return
+        menu=QMenu(self)
+        choices={
+            "live":menu.addAction("Classificar como canal ao vivo"),
+            "movie":menu.addAction("Classificar como filme"),
+            "series":menu.addAction("Classificar como episódio de série"),
+            "uncategorized":menu.addAction("Marcar como não classificado"),
+        }
+        menu.addSeparator()
+        automatic=menu.addAction("Restaurar classificação automática")
+        selected=menu.exec(self.results.mapToGlobal(position))
+        if selected is None:
+            return
+        kind=next((kind for kind,action in choices.items() if action is selected),None)
+        if selected is not automatic and kind is None:
+            return
+        self.library.set_kind_override(self.playlist_id,row["key"],kind)
+        self.status.setText("Tipo corrigido e salvo. Favoritos e histórico foram preservados.")
+        # Refresh only the current page, never reload the full M3U.
+        self._load_items(reset=True)
+
     def _selected(self,current,previous=None):
         self.selected = current.data(Qt.ItemDataRole.UserRole) if current else None
         row = self.selected
@@ -2229,7 +2269,7 @@ class MainWindow(legacy.MainWindow):
         self.synopsis_button.setVisible(bool(row and row.get("kind") in ("movie","series")))
 
     def _remember_browse(self):
-        if self.mode not in ("home","favorites","series","movie","football","live","episodes"):
+        if self.mode not in ("home","favorites","series","movie","football","live","episodes","uncategorized"):
             return
         self._browse_history.append({
             "mode":self.mode,
