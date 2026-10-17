@@ -965,6 +965,8 @@ class MainWindow(legacy.MainWindow):
         self.status.hide()
         self.player_controls.hide()
         self.player_actions.hide()
+        self.player_back.hide()
+        self.synopsis_button.hide()
         self.menuBar().hide()
         self.outer_layout.setContentsMargins(0,0,0,0)
         self.outer_layout.setSpacing(0)
@@ -1009,6 +1011,10 @@ class MainWindow(legacy.MainWindow):
         self.status.show()
         self.player_controls.show()
         self.player_actions.show()
+        self.player_back.setVisible(bool(self.playing) and not self._video_fullscreen)
+        self.synopsis_button.setVisible(
+            bool((self.selected or self.playing) and
+                 (self.selected or self.playing).get("kind") in ("movie","series")))
         # Keep the old top menu permanently hidden; settings own its actions.
         if self._saved_minimum_size is not None:
             self.setMinimumSize(self._saved_minimum_size)
@@ -1760,6 +1766,8 @@ class MainWindow(legacy.MainWindow):
         self._browse_history = self._browse_history[-20:]
 
     def _go_back(self):
+        if self._video_fullscreen:
+            self._leave_video_fullscreen()
         if not self._browse_history:
             # Playback stays in the same section: returning simply focuses
             # the browse list, preserving category, query and scroll.
