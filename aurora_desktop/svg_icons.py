@@ -42,7 +42,7 @@ PATHS = {
     "audio": '<path d="M3 9h5l5-5v16l-5-5H3z" fill="{panel}"/><path d="m17 8 1.5 4-1.5 4M21 5a12 12 0 0 1 0 14"/>',
     "aspect": '<rect x="2" y="5" width="20" height="14" rx="1.5"/><path d="M6 9v6h12V9H6z" stroke-dasharray="2 2"/>',
     "speed": '<path d="M4 18a10 10 0 1 1 16 0"/><path d="m12 13 5-5"/><circle cx="12" cy="13" r="1.5" fill="{aqua}"/>',
-    "other": '<circle cx="5" cy="12" r="1.5" fill="{aqua}"/><circle cx="12" cy="12" r="1.5" fill="{aqua}"/><circle cx="19" cy="12" r="1.5" fill="{aqua}"/>',
+    "other": '<rect x="3" y="3" width="18" height="18" rx="3.5"/><circle cx="7" cy="12" r="1.15" fill="{aqua}"/><circle cx="12" cy="12" r="1.15" fill="{aqua}"/><circle cx="17" cy="12" r="1.15" fill="{aqua}"/>',
     "update": '<path d="M12 3v12m-4-4 4 4 4-4"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
 }
 
