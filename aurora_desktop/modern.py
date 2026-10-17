@@ -1508,8 +1508,10 @@ class MainWindow(legacy.MainWindow):
         show_list = not active or section == "playlists"
         self.results.setVisible(show_list)
         self.page.setVisible(show_list)
-        self.action.setVisible(not active)
-        self.second_action.setVisible(not active)
+        # Futebol uses a compact refresh next to the heading; setup EPG
+        # is located under Configurações and must not occupy list height.
+        self.action.setVisible(not active and self.mode != "football")
+        self.second_action.setVisible(not active and self.mode != "football")
         if active:
             self.theme_select.blockSignals(True)
             self.theme_select.setCurrentIndex(
