@@ -96,6 +96,8 @@ def channel_base(title: str) -> str:
 
 
 def category_of(kind: str, title: str, group_name: str) -> str:
+    if kind == "other":
+        return "Não classificados"
     group = clean_label(group_name) if group_name.strip() else ""
     if kind == "live":
         return channel_base(title)
@@ -241,6 +243,12 @@ class LibraryV2(Library):
                     playlist_id INTEGER PRIMARY KEY REFERENCES playlists(id) ON DELETE CASCADE,
                     version INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS classification_overrides (
+                    playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+                    key TEXT NOT NULL,
+                    kind TEXT NOT NULL CHECK(kind IN ('live','movie','series','other')),
+                    PRIMARY KEY(playlist_id,key)
+                );
                 CREATE TABLE IF NOT EXISTS provider_category_kinds (
                     playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
                     normalized_name TEXT NOT NULL,
@@ -290,13 +298,15 @@ class LibraryV2(Library):
         """Reclassify a 0.1/0.2 catalog once, preserving URL-keyed favorites and progress."""
         with self.connect() as db:
             row = db.execute("SELECT version FROM classification_version WHERE playlist_id=?", (playlist_id,)).fetchone()
-            if row and row["version"] >= 5 and not force:
+            if row and row["version"] >= 6 and not force:
                 return
             provider_kinds = {r["normalized_name"]:r["kind"] for r in db.execute(
                 "SELECT normalized_name,kind FROM provider_category_kinds WHERE playlist_id=?", (playlist_id,))}
+            overrides = {r["key"]:r["kind"] for r in db.execute(
+                "SELECT key,kind FROM classification_overrides WHERE playlist_id=?", (playlist_id,))}
             cursor = 0
             while True:
-                batch = db.execute("""SELECT rowid,key,title,url,group_name,kind,logo,type_hint
+                batch = db.execute("""SELECT rowid,key,title,url,group_name,kind,logo,type_hint,tvg_id
                     FROM items WHERE playlist_id=? AND rowid>? ORDER BY rowid LIMIT 1200""",
                     (playlist_id, cursor)).fetchall()
                 if not batch:
@@ -304,15 +314,50 @@ class LibraryV2(Library):
                 updated = []
                 for item in batch:
                     title, group, logo = repair_legacy_title(item["title"], item["group_name"], item["logo"])
-                    kind = provider_kinds.get(normalized(group)) or kind_of(group, title, item["url"], item["type_hint"])
+                    # Manual choice > explicit media type > provider category
+                    # > URL/group/episode heuristics. Never lose manual choices.
+                    hint = normalized(item["type_hint"])
+                    explicit = kind_of(group,title,item["url"],item["type_hint"],item["tvg_id"]) if (
+                        hint in ("live","tv","ao vivo","channel","linear","movie",
+                                 "movies","filme","filmes","film","series",
+                                 "serie","episode","episodio","tv show","show")) else None
+                    kind = (overrides.get(item["key"]) or explicit or
+                            provider_kinds.get(normalized(group)) or
+                            kind_of(group,title,item["url"],item["type_hint"],item["tvg_id"]))
+                    if kind not in ("live","movie","series","other"):
+                        kind = "other"
                     series, season, episode = episode_info(title) if kind == "series" else ("", None, None)
                     category = category_of(kind, title, group)
                     updated.append((title,group,logo,kind,category,series,season,episode,item["rowid"]))
                 db.executemany("""UPDATE items SET title=?,group_name=?,logo=?,kind=?,
                     category=?,series_name=?,season=?,episode=? WHERE rowid=?""",updated)
                 cursor = batch[-1]["rowid"]
-            db.execute("""INSERT INTO classification_version VALUES (?,5)
-                ON CONFLICT(playlist_id) DO UPDATE SET version=5""", (playlist_id,))
+            db.execute("""INSERT INTO classification_version VALUES (?,6)
+                ON CONFLICT(playlist_id) DO UPDATE SET version=6""", (playlist_id,))
+
+    def set_content_kind(self, playlist_id: int, key: str, kind: str) -> None:
+        """Keep one manual correction across playlist refresh and migration.
+
+        URL-derived item keys are not changed: favorites, history and resume
+        continue pointing at the same content even after reclassification.
+        """
+        if kind not in ("live","movie","series","other"):
+            raise ValueError("Classificação inválida.")
+        with self.connect() as db:
+            item = db.execute("SELECT title,group_name FROM items WHERE playlist_id=? AND key=?",
+                              (playlist_id,key)).fetchone()
+            if item is None:
+                raise ValueError("Conteúdo não encontrado.")
+            series, season, episode = episode_info(item["title"]) if kind == "series" else ("",None,None)
+            category = category_of(kind,item["title"],item["group_name"])
+            db.execute("""INSERT INTO classification_overrides (playlist_id,key,kind)
+                VALUES (?,?,?) ON CONFLICT(playlist_id,key) DO UPDATE SET kind=excluded.kind""",
+                (playlist_id,key,kind))
+            db.execute("""UPDATE items SET kind=?,category=?,series_name=?,season=?,episode=?
+                          WHERE playlist_id=? AND key=?""",
+                       (kind,category,series,season,episode,playlist_id,key))
+            db.execute("UPDATE favorites SET kind=? WHERE playlist_id=? AND key=?",
+                       (kind,playlist_id,"item:"+key))
 
     def categories(self, playlist_id: int, kind: str) -> list[dict]:
         with self.connect() as db:
