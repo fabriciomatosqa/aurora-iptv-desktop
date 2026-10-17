@@ -1,6 +1,21 @@
-# AURORA IPTV — Desktop 0.6.0-beta.12
+# AURORA IPTV — Desktop 0.6.0-beta.13
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
+
+## v0.6.0-beta.13 — correção SVG, Futebol, histórico e sinopses
+
+- **Correção definitiva dos SVGs incompletos**: o renderizador QtSvg usa agora o viewport lógico explícito no pixmap de alta densidade. O ícone preenche sua área normal em Windows/Linux. Testes percorrem os pixels dos ícones para detectar cortes.
+- Menu lateral e ações do EPG utilizam imagens vetoriais nítidas; o ícone dourado de Favoritos volta a aparecer.
+- **Futebol sem canais genéricos misturados**: agenda só mostra partidas identificadas com dois adversários e canal correspondente. Quando não há EPG, canais esportivos continuam em Ao vivo.
+- Novo botão compacto Atualizar perto do título da agenda, com desativação e feedback enquanto atualiza; Configurar EPG permanece em Configurações → Guia.
+- Categorias priorizam FIFA, Brasileirão, Libertadores e Sul-Americana, sem criar abas vazias; demais ligas são exibidas pelo nome informado no EPG.
+- Cards apresentam competição, confrontos, data em português, horário local de 24 h, canal e identificação de reprise. Imagens de evento só são usadas quando o próprio XMLTV fornecer uma URL válida.
+- Busca parcial por equipe e preservação de campeonato/pesquisa/rolagem após atualização do EPG.
+- Histórico de navegação salva categoria, busca e rolagem ao entrar em episódios e restaura ao Voltar.
+- Sinopse rolável para filmes, séries e episódios extraída dos metadados M3U, com fallback **Sinopse não disponível**. Migração SQLite preserva favoritos e progresso.
+- Tela cheia, atualização silenciosa Windows e instalação Debian com permissões mantidas.
+
+**Limitação:** placares/minutos em tempo real e escudos oficiais de todos os times **não são prometidos nesta beta**. Exigem uma fonte esportiva autorizada e o mapeamento correto das equipes. Nenhum placar é inventado.
 
 ## v0.6.0-beta.12 — preferências integradas e ícones SVG
 
