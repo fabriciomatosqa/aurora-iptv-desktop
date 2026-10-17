@@ -38,6 +38,7 @@ def get_provider_category_kinds(source: str) -> dict[str, str]:
     if provider_api_endpoint(source, "get_live_categories") is None:
         return {}
     categories = {}
+    ambiguous = set()
     for action, kind in CATEGORY_ACTIONS:
         url = provider_api_endpoint(source, action)
         if not url:
@@ -51,7 +52,17 @@ def get_provider_category_kinds(source: str) -> dict[str, str]:
                     continue
                 name = row.get("category_name")
                 if isinstance(name, str) and name.strip():
-                    categories[normalized(name)] = kind
+                    key=normalized(name)
+                    # One category name may occur in the live, VOD AND
+                    # series endpoints. Never make last API response win:
+                    # the same group label is not a reliable type signal.
+                    if key in ambiguous:
+                        continue
+                    if key in categories and categories[key]!=kind:
+                        categories.pop(key,None)
+                        ambiguous.add(key)
+                    else:
+                        categories[key]=kind
         except (requests.RequestException, ValueError, TypeError, UnicodeError):
             # A bad category API cannot disable the user's playable M3U.
             continue
