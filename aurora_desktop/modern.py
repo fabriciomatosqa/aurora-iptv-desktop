@@ -1271,6 +1271,9 @@ class MainWindow(legacy.MainWindow):
         if self._video_fullscreen:
             self._leave_video_fullscreen()
         pip = PiPWindow(self.player, self.audio, self._toggle_play, self._toggle_mute)
+        geometry = self.settings.value("pip/geometry")
+        if geometry:
+            pip.restoreGeometry(geometry)
         pip.restore_requested.connect(self._leave_pip)
         pip.set_title(self.playing.get("title", "AURORA IPTV"))
         self._pip_window = pip
@@ -1286,6 +1289,7 @@ class MainWindow(legacy.MainWindow):
         if pip is None:
             return
         self._pip_window = None  # guard against closeEvent recursion
+        self.settings.setValue("pip/geometry", pip.saveGeometry())
         self.player.setVideoOutput(self.video)
         self.video_stage.setCurrentWidget(self.video)
         pip.prepare_for_app_exit()
