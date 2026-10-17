@@ -182,11 +182,13 @@ def _team(row: dict) -> dict:
 
 
 def parse_scoreboard(payload: dict, slug: str, checked: float | None = None) -> list[dict]:
+    if not isinstance(payload, dict):
+        return []
     checked = time.time() if checked is None else checked
     logos = ((payload.get("leagues") or [{}])[0].get("logos") or [{}])
     competition_badge = safe_artwork(logos[0].get("href", ""))
     events = []
-    for item in payload.get("events", []):
+    for item in (payload.get("events") or []):
         try:
             contest = item["competitions"][0]
             competitors = contest["competitors"]
@@ -203,7 +205,7 @@ def parse_scoreboard(payload: dict, slug: str, checked: float | None = None) -> 
             events.append({"league": slug, "kickoff": d, "home": h, "away": a,
                            "state": state, "clock": str(clock), "checked": checked,
                            "competition_badge": competition_badge})
-        except (KeyError, ValueError, TypeError, StopIteration, IndexError):
+        except (KeyError, ValueError, TypeError, StopIteration, IndexError, AttributeError):
             continue
     return events
 
@@ -260,12 +262,18 @@ def national_artwork(row: dict) -> dict:
 
 def parse_team_roster(payload: dict) -> list[dict]:
     """Read ESPN team roster without guessing club identities."""
+    if not isinstance(payload, dict):
+        return []
     sports = payload.get("sports") or []
     leagues = (sports[0].get("leagues") or []) if sports else []
     roster = (leagues[0].get("teams") or []) if leagues else []
     result = []
     for item in roster:
+        if not isinstance(item, dict):
+            continue
         team = item.get("team") or {}
+        if not isinstance(team, dict):
+            continue
         names = [team.get(k) for k in ("displayName", "shortDisplayName", "name", "nickname", "abbreviation")]
         names = [n for n in names if isinstance(n, str) and n.strip()]
         logos = team.get("logos") or []
@@ -289,6 +297,8 @@ def fetch_score_updates(rows: list[dict], fetch_json=None, *, request_limit: int
 
     Missing data is *not* filled with guesses. Call in a worker, not in Qt GUI.
     """
+    if request_limit <= 0:
+        return {fixture_key(row): national_artwork(row) for row in rows if national_artwork(row)}
     getter = fetch_json or _read_json
     groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     now = datetime.now(timezone.utc)
@@ -321,7 +331,8 @@ def fetch_score_updates(rows: list[dict], fetch_json=None, *, request_limit: int
             for task in as_completed(tasks):
                 try:
                     results.extend(task.result())
-                except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+                except Exception:
+                    # Public APIs may fail or change schema. Keep the old guide.
                     continue
     # Team logos are often available even when a specific fixture is absent
     # from the scoreboard. Use the same ESPN teams endpoint as Android.
