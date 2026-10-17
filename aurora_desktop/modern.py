@@ -14,7 +14,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QDialog, QTextBrowser,
-    QPushButton, QProgressBar, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu, QGraphicsOpacityEffect, QStyleOptionSlider, QStyle,
+    QPushButton, QProgressBar, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu, QGraphicsOpacityEffect, QStyleOptionSlider, QStyle, QStyledItemDelegate,
 )
 
 from . import app as legacy
@@ -208,6 +208,40 @@ class PlayerSplash(QFrame):
         description.setObjectName("splashDescription")
         layout.addWidget(description)
         layout.addStretch(2)
+
+
+class FootballLiveDelegate(QStyledItemDelegate):
+    """Pulse only on an XMLTV-confirmed scheduled live broadcast.
+
+    This badge is a display hint from the EPG, not proof of the video
+    stream or a substitute for an independently verified live score.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.pulse_on = True
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        record = index.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(record, dict) or record.get("kind") != "football":
+            return
+        if record.get("broadcast") != "live" or not self.pulse_on:
+            return
+        try:
+            now = datetime.now().astimezone()
+            start = datetime.fromisoformat(record["start"]).astimezone()
+            end = datetime.fromisoformat(record["end"]).astimezone()
+            if not (start <= now < end):
+                return
+        except (KeyError, TypeError, ValueError):
+            return
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#45d9a0"))
+        box = option.rect
+        painter.drawEllipse(QRectF(box.right() - 22, box.top() + 16, 10, 10))
+        painter.restore()
 
 
 class Covers(QObject):
@@ -601,6 +635,8 @@ class MainWindow(legacy.MainWindow):
         self.results = QListWidget()
         self.results.setObjectName("results")
         self.results.setIconSize(QSize(70,88))
+        self._football_live_delegate = FootballLiveDelegate(self.results)
+        self.results.setItemDelegate(self._football_live_delegate)
         self.results.setUniformItemSizes(True)
         self.results.setSpacing(7)
         self.results.setWordWrap(True)
@@ -862,6 +898,10 @@ class MainWindow(legacy.MainWindow):
         self._search_timer.setInterval(240)
         self._search_timer.timeout.connect(self._refresh)
         self.guide_thread = None
+        self._live_badge_timer = QTimer(self)
+        self._live_badge_timer.setInterval(700)
+        self._live_badge_timer.timeout.connect(self._pulse_football_badge)
+        self._live_badge_timer.start()
         self.setMinimumSize(1150,680)
         self.resize(1580,900)
 
@@ -1752,6 +1792,11 @@ class MainWindow(legacy.MainWindow):
             elif self.mode == "episodes" and r.get("season") is not None:
                 title += f"\nT{r['season']:02d}  E{r['episode']:02d}"
             self._add_result(title,r)
+
+    def _pulse_football_badge(self):
+        if self.mode == "football":
+            self._football_live_delegate.pulse_on = not self._football_live_delegate.pulse_on
+            self.results.viewport().update()
 
     def _near_end(self,value):
         scrollbar = self.results.verticalScrollBar()
