@@ -1754,7 +1754,7 @@ class MainWindow(legacy.MainWindow):
         self.synopsis_button.setVisible(bool(row and row.get("kind") in ("movie","series")))
 
     def _remember_browse(self):
-        if self.mode not in ("series","movie","football","live","episodes"):
+        if self.mode not in ("home","favorites","series","movie","football","live","episodes"):
             return
         self._browse_history.append({
             "mode":self.mode,
@@ -1807,7 +1807,9 @@ class MainWindow(legacy.MainWindow):
             min(position,self.results.verticalScrollBar().maximum()))
 
     def _show_synopsis(self):
-        row=self.selected or self.playing or {}
+        row=(self.selected if self.selected and self.selected.get("kind") in ("movie","series")
+             else self.playing if self.playing and self.playing.get("kind") in ("movie","series")
+             else {})
         if row.get("kind") not in ("movie","series"):
             return
         text=(row.get("synopsis") or "").strip() or "Sinopse não disponível."
