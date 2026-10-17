@@ -427,7 +427,7 @@ class LibraryV2(Library):
             category = " ".join((c.text or "") for c in elem if c.tag == "category").strip()
             desc = next(((c.text or "") for c in elem if c.tag == "desc"), "").strip()
             name = title if MATCH.search(title) else (subtitle if MATCH.search(subtitle) else desc[:160])
-            details = football_details(name,category or title)
+            details = football_details(name,category or (desc[:160] if FOOTBALL.search(desc) else title))
             # Never treat other sports, highlight shows or commentary as soccer.
             words = normalized(title + " " + subtitle + " " + category + " " + desc[:160])
             if NON_FOOTBALL.search(words) or NON_MATCH_PROGRAMMES.search(normalized(title)):
