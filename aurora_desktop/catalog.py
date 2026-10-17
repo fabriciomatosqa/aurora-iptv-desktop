@@ -18,7 +18,8 @@ import requests
 
 from .core import ATTR, Library, playlist_lines, kind_of, episode_info, parse_extinf
 from .android_rules import normalized, movie_category, football_details, NON_FOOTBALL, NON_MATCH_PROGRAMMES
-from .provider import get_provider_category_kinds, get_provider_series_posters
+from .provider import get_provider_category_kinds, get_provider_series_posters, get_provider_stream_artwork
+from .artwork import xtream_stream_id
 
 GENRES = (
     ("Ação", r"\ba[cç][aã]o\b|\baction\b"),
@@ -286,11 +287,56 @@ class LibraryV2(Library):
                 db.executemany("INSERT INTO provider_series_posters VALUES (?,?,?)",
                                [(playlist_id,name,cover) for name,cover in posters.items()])
         self.ensure_categories(playlist_id, force=True)
+        self._enrich_missing_artwork(playlist_id, location)
         if r and not r["epg_url"]:
             epg = epg_from_header(location)
             if epg:
                 self.set_epg_url(playlist_id, epg)
         return count
+
+    def _enrich_missing_artwork(self, playlist_id: int, location: str) -> None:
+        """Fill only missing TV/movie posters by Xtream stream ID.
+
+        Stored URLs, keys, progress, favorites, categories and playback are
+        never altered. Unrelated hosts and unsupported stream paths are skipped.
+        """
+        from urllib.parse import urlsplit
+        source_host = urlsplit(location).hostname
+        if not source_host:
+            return
+        with self.connect() as db:
+            missing = {r["kind"] for r in db.execute(
+                """SELECT DISTINCT kind FROM items WHERE playlist_id=?
+                    AND (logo='' OR logo IS NULL) AND kind IN ('live','movie')""",
+                (playlist_id,))}
+        for kind in ("live","movie"):
+            if kind not in missing:
+                continue
+            by_id = get_provider_stream_artwork(location,kind)
+            if not by_id:
+                continue
+            with self.connect() as db:
+                cursor = 0
+                while True:
+                    batch = db.execute(
+                        """SELECT rowid,url FROM items WHERE playlist_id=? AND kind=?
+                            AND (logo='' OR logo IS NULL) AND rowid>?
+                            ORDER BY rowid LIMIT 1200""",
+                        (playlist_id,kind,cursor)).fetchall()
+                    if not batch:
+                        break
+                    replacements=[]
+                    for record in batch:
+                        url = record["url"]
+                        if urlsplit(url).hostname != source_host:
+                            continue
+                        stream_id = xtream_stream_id(url,kind)
+                        image = by_id.get(stream_id,"")
+                        if image:
+                            replacements.append((image,record["rowid"]))
+                    if replacements:
+                        db.executemany("UPDATE items SET logo=? WHERE rowid=?",replacements)
+                    cursor=batch[-1]["rowid"]
 
     def ensure_categories(self, playlist_id: int, force: bool = False) -> None:
         """Reclassify a 0.1/0.2 catalog once, preserving URL-keyed favorites and progress."""
@@ -376,7 +422,7 @@ class LibraryV2(Library):
         with self.connect() as db:
             if kind == "series":
                 sql = f"""SELECT series_name AS title,series_name, 'series' AS kind,
-                    MAX(logo) AS logo, MIN(key) AS key,COUNT(*) AS episodes,
+                    COALESCE(MAX(NULLIF(logo,'')),'') AS logo, MIN(key) AS key,COUNT(*) AS episodes,
                     MAX(NULLIF(synopsis,'')) AS synopsis,MIN(category) AS category
                     FROM items WHERE {condition}
                     GROUP BY series_name ORDER BY series_name COLLATE NOCASE LIMIT ? OFFSET ?"""
@@ -401,12 +447,19 @@ class LibraryV2(Library):
                 (playlist_id,f"%{search}%"))]
             for r in rows:
                 if r["kind"] == "series":
-                    item = db.execute("""SELECT MAX(logo) AS logo,series_name,COUNT(*) AS episodes FROM items
+                    item = db.execute("""SELECT COALESCE(MAX(NULLIF(logo,'')),'') AS logo,series_name,COUNT(*) AS episodes FROM items
                         WHERE playlist_id=? AND series_name=?""",(playlist_id,r["title"])).fetchone()
                 else:
                     item = db.execute("SELECT logo FROM items WHERE playlist_id=? AND key=?",
                         (playlist_id,r["key"][5:])).fetchone()
                 r["logo"] = item["logo"] if item else ""
+                if r["kind"] == "series":
+                    cover=db.execute(
+                        """SELECT cover FROM provider_series_posters
+                            WHERE playlist_id=? AND normalized_title=?""",
+                        (playlist_id,normalized(r["title"]))).fetchone()
+                    if cover and cover["cover"]:
+                        r["logo"] = cover["cover"]
             return rows
 
     def set_epg_url(self, playlist_id: int, url: str) -> None:
