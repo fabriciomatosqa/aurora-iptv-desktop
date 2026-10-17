@@ -405,8 +405,10 @@ class Covers(QObject):
             try:
                 # 30 days; expired covers are refreshed after provider changes.
                 if time.time()-path.stat().st_mtime < 30*86400:
-                    image=QPixmap(str(path))
-                    if not image.isNull():
+                    image=QPixmap()
+                    # Cached files are SHA-named .img blobs. Load by image
+                    # magic bytes, never by the nonstandard file extension.
+                    if image.loadFromData(path.read_bytes()) and not image.isNull():
                         item.setIcon(self._icon_for(url,category,image))
                         return
             except OSError:
