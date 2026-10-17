@@ -32,6 +32,7 @@ USER_AGENT = f"AURORA-IPTV-Desktop/{__version__}"
 MAX_INSTALLER_BYTES = 350 * 1024 * 1024
 
 _VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:[-.](beta|b|rc)[.-]?(\d+))?$",re.I)
+_DATED_VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)-(\d{6})\.(\d{2})$",re.I)
 _DIGEST_RE = re.compile(r"^sha256:([0-9a-fA-F]{64})$")
 
 
@@ -42,19 +43,54 @@ class Version:
     patch: int
     rank: int
     iteration: int
+    date_stamp: int = 0
 
     def comparison(self):
-        return (self.major,self.minor,self.patch,self.rank,self.iteration)
+        # Calendar ordering is ISO (YYYYMMDD), NOT the displayed DDMMYY,
+        # so releases are ordered correctly across years and months.
+        return (self.major,self.minor,self.patch,self.rank,self.date_stamp,self.iteration)
 
 
 def parse_version(value: str) -> Version | None:
-    found = _VERSION_RE.fullmatch(value.strip())
+    """Support published legacy beta tags and dated DDMMYY.NN releases."""
+    text = value.strip()
+    dated = _DATED_VERSION_RE.fullmatch(text)
+    if dated:
+        major, minor, patch, date_code, sequence = dated.groups()
+        day, month, year = int(date_code[:2]), int(date_code[2:4]), 2000+int(date_code[4:])
+        try:
+            date = datetime(year,month,day)
+        except ValueError:
+            return None
+        number = int(sequence)
+        if number < 1:
+            return None
+        return Version(int(major),int(minor),int(patch),2,number,
+                       int(date.strftime("%Y%m%d")))
+    found = _VERSION_RE.fullmatch(text)
     if not found:
         return None
     major, minor, patch, label, number = found.groups()
-    rank = 2 if label is None else 1 if label.lower() == "rc" else 0
+    rank = 3 if label is None else 1 if label.lower() == "rc" else 0
     return Version(int(major),int(minor),int(patch),rank,int(number or 0))
 
+
+def debian_asset_name(tag: str) -> str | None:
+    """Expected DEB filename for dated and existing GitHub release tags."""
+    version = parse_version(tag)
+    if version is None:
+        return None
+    base = f"{version.major}.{version.minor}.{version.patch}"
+    if version.date_stamp:
+        suffix = f"-date{version.date_stamp}.{version.iteration:02d}"
+    else:
+        found = _VERSION_RE.fullmatch(tag)
+        if found is None:
+            return None
+        _, _, _, qualifier, number = found.groups()
+        suffix = (f"-{('beta' if qualifier.lower() == 'b' else qualifier.lower())}{number}"
+                  if qualifier else "")
+    return f"aurora-iptv_{base}{suffix}_amd64.deb"
 
 @dataclass(frozen=True)
 class ReleaseAsset:
@@ -124,7 +160,7 @@ def discover_release(current: str = __version__, channel: str = "beta",
         version = parse_version(tag)
         if version is None or version.comparison() <= existing.comparison():
             continue
-        prerelease = bool(item.get("prerelease") or version.rank < 2)
+        prerelease = bool(item.get("prerelease") or version.rank < 3)
         if channel == "stable" and prerelease:
             continue
         page = str(item.get("html_url",""))
@@ -135,10 +171,7 @@ def discover_release(current: str = __version__, channel: str = "beta",
             expected_name = "AURORA-IPTV-Desktop-Setup.exe"
         elif platform == "linux":
             # Linux installation uses the versioned Debian package, never the portable tarball.
-            m = _VERSION_RE.fullmatch(tag)
-            major, minor, patch, qualifier, number = m.groups()
-            suffix = f"-{('beta' if qualifier.lower() == 'b' else qualifier.lower())}{number}" if qualifier else ""
-            expected_name = f"aurora-iptv_{major}.{minor}.{patch}{suffix}_amd64.deb"
+            expected_name = debian_asset_name(tag)
         else:
             raise UpdateError("Sistema operacional não suportado para atualização.")
         match = next((a for a in assets if isinstance(a,dict) and a.get("name")==expected_name),None)
@@ -193,7 +226,7 @@ def download_verified(installer: ReleaseAsset, folder: Path | None = None,
     if (not _trusted_url(installer.url,asset=True)
             or urlsplit(installer.url).hostname != "github.com"
             or not (installer.name == "AURORA-IPTV-Desktop-Setup.exe"
-                    or re.fullmatch(r"aurora-iptv_[0-9]+\.[0-9]+\.[0-9]+(?:-(?:beta|rc)[0-9]+)?_amd64\.deb",
+                    or re.fullmatch(r"aurora-iptv_[0-9]+\.[0-9]+\.[0-9]+(?:-(?:(?:beta|rc)[0-9]+|date20[0-9]{6}\.[0-9]{2}))?_amd64\.deb",
                                     installer.name))):
         raise UpdateError("Arquivo de atualização não autorizado.")
     match = _DIGEST_RE.fullmatch(installer.digest)
