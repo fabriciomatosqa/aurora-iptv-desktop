@@ -6,8 +6,8 @@ from datetime import datetime
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import Qt, QSize, QTimer, QUrl, Signal, QObject, QThread
-from PySide6.QtGui import QBrush, QColor, QFont, QGradient, QIcon, QLinearGradient, QPainter, QPixmap, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QSize, QRectF, QTimer, QUrl, Signal, QObject, QThread
+from PySide6.QtGui import QBrush, QColor, QFont, QGradient, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QKeySequence, QShortcut
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -31,39 +31,106 @@ def asset(name: str) -> Path:
 
 
 class AuroraBanner(QFrame):
-    def __init__(self):
-        super().__init__()
-        self.setMinimumHeight(118)
-        self.setMaximumHeight(142)
+    """A full-width, image-backed hero instead of an isolated picture tile.
+
+    The source image is always center-cropped (never stretched), clipped to a
+    rounded outline, then blended into the dark AURORA shell. Text stays part
+    of the layout so it remains accessible and responsive.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("auroraHero")
+        self.setMinimumHeight(156)
+        self.setMaximumHeight(182)
         self._image = QPixmap(str(asset("aurora_banner.jpg")))
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(27, 16, 22, 16)
+        layout.setContentsMargins(29, 17, 26, 18)
+        layout.setSpacing(5)
+
+        overline = QHBoxLayout()
+        overline.setSpacing(9)
+        badge = QLabel("✦  AURORA EXPERIENCE")
+        badge.setObjectName("heroBadge")
+        overline.addWidget(badge, 0, Qt.AlignmentFlag.AlignLeft)
+        overline.addStretch(1)
+        from . import __version__
+        version = QLabel(f"DESKTOP  /  v{__version__}")
+        version.setObjectName("heroVersion")
+        overline.addWidget(version, 0, Qt.AlignmentFlag.AlignRight)
+        layout.addLayout(overline)
+        layout.addStretch(1)
+
         title = QLabel("AURORA  /  IPTV")
-        title.setStyleSheet("font-size:27px;font-weight:800;color:white;background:transparent;")
-        subtitle = QLabel("SEU UNIVERSO DE ENTRETENIMENTO  ·  DESKTOP")
-        subtitle.setStyleSheet("font-size:11px;letter-spacing:2px;color:#b5ffef;background:transparent;")
-        layout.addStretch()
+        title.setObjectName("heroTitle")
         layout.addWidget(title)
+        subtitle = QLabel("SEU UNIVERSO DE ENTRETENIMENTO")
+        subtitle.setObjectName("heroSubtitle")
         layout.addWidget(subtitle)
+        footnote = QLabel("CANAIS AO VIVO    ·    FILMES    ·    SÉRIES    ·    FUTEBOL")
+        footnote.setObjectName("heroFootnote")
+        layout.addWidget(footnote)
+        layout.addStretch(1)
 
     def paintEvent(self, event):
         p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        w, h = self.width(), self.height()
+        if w <= 1 or h <= 1:
+            p.end()
+            return
+        frame = QRectF(0.5, 0.5, w-1, h-1)
+        clip = QPainterPath()
+        clip.addRoundedRect(frame, 16, 16)
+        p.setClipPath(clip)
+        p.fillRect(self.rect(), QColor("#09253a"))
         if not self._image.isNull():
-            scaled = self._image.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-            x = (scaled.width() - self.width()) // 2
-            y = (scaled.height() - self.height()) // 2
-            p.drawPixmap(self.rect(), scaled, scaled.rect().adjusted(x,y,-x,-y))
+            # KeepAspectRatioByExpanding, but crop from the source directly:
+            # this avoids the old distorted drawPixmap source rectangle.
+            img_w, img_h = self._image.width(), self._image.height()
+            source_aspect = img_w / img_h
+            target_aspect = w / h
+            if source_aspect > target_aspect:
+                crop_width = img_h * target_aspect
+                left = (img_w - crop_width) / 2
+                source = QRectF(left, 0, crop_width, img_h)
+            else:
+                crop_height = img_w / target_aspect
+                top = (img_h - crop_height) * 0.48
+                source = QRectF(0, top, img_w, crop_height)
+            p.drawPixmap(frame, self._image, source)
         else:
-            grad = QLinearGradient(0,0,self.width(),self.height())
-            for pos,color in [(0,"#072537"),(.45,"#104c68"),(.78,"#32528a"),(1,"#21154b")]:
-                grad.setColorAt(pos,QColor(color))
-            p.fillRect(self.rect(),grad)
-        overlay = QLinearGradient(0,0,self.width(),0)
-        overlay.setColorAt(0,QColor(2,9,20,215))
-        overlay.setColorAt(0.8,QColor(4,14,27,65))
-        overlay.setColorAt(1,QColor(4,14,27,160))
-        p.fillRect(self.rect(),overlay)
+            backdrop = QLinearGradient(0, 0, w, h)
+            backdrop.setColorAt(0, QColor("#0b293e"))
+            backdrop.setColorAt(.42, QColor("#13677b"))
+            backdrop.setColorAt(.74, QColor("#364f8b"))
+            backdrop.setColorAt(1, QColor("#251a50"))
+            p.fillRect(self.rect(), backdrop)
+        # Blend the photograph into the dark shell around the text. The
+        # transparent right side preserves the full northern-lights artwork.
+        overlay = QLinearGradient(0, 0, w, 0)
+        overlay.setColorAt(0, QColor(4, 16, 32, 242))
+        overlay.setColorAt(.30, QColor(5, 22, 40, 193))
+        overlay.setColorAt(.62, QColor(6, 24, 42, 32))
+        overlay.setColorAt(1, QColor(6, 22, 39, 100))
+        p.fillRect(self.rect(), overlay)
+        lower = QLinearGradient(0, 0, 0, h)
+        lower.setColorAt(0, QColor(5, 19, 34, 55))
+        lower.setColorAt(.67, QColor(5, 19, 34, 0))
+        lower.setColorAt(1, QColor(7, 22, 36, 180))
+        p.fillRect(self.rect(), lower)
+        # A restrained aurora accent along the bottom ties into the panels.
+        streak = QLinearGradient(0, 0, w, 0)
+        streak.setColorAt(0, QColor("#5fefcb"))
+        streak.setColorAt(.45, QColor("#55c9d6"))
+        streak.setColorAt(.76, QColor("#746ccf"))
+        streak.setColorAt(1, QColor(99, 83, 155, 50))
+        p.fillRect(QRectF(0, h-3, w, 3), streak)
+        p.setClipping(False)
+        p.setPen(QPen(QColor(102, 203, 213, 90), 1.1))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRoundedRect(frame, 16, 16)
+        p.end()
 
 
 class PlayerSplash(QFrame):
@@ -288,16 +355,9 @@ class MainWindow(legacy.MainWindow):
         self.header_widget.setObjectName("mainHeader")
         upper = QHBoxLayout(self.header_widget)
         upper.setContentsMargins(0,0,0,0)
-        upper.setSpacing(12)
-        upper.addWidget(AuroraBanner(),1)
-        tool = QVBoxLayout()
-        tool.addWidget(QLabel("LISTA ATIVA"))
-        self.playlists = QComboBox()
-        self.playlists.setMinimumWidth(210)
-        self.playlists.currentIndexChanged.connect(self._on_playlist)
-        tool.addWidget(self.playlists)
-        tool.addStretch()
-        upper.addLayout(tool)
+        upper.setSpacing(0)
+        self.banner = AuroraBanner(self.header_widget)
+        upper.addWidget(self.banner, 1)
         outer.addWidget(self.header_widget)
 
         panels = QSplitter(Qt.Orientation.Horizontal)
@@ -342,6 +402,33 @@ class MainWindow(legacy.MainWindow):
         self.subtitle.setObjectName("muted")
         self.subtitle.setWordWrap(True)
         content_layout.addWidget(self.subtitle)
+
+        # The one and only playlist selector lives under Configurações.
+        # Keeping self.playlists connected to legacy._reload_playlists() and
+        # legacy._on_playlist() preserves import/switch/favorites behavior.
+        self.playlist_settings = QFrame(contents_panel)
+        self.playlist_settings.setObjectName("playlistSettings")
+        playlist_layout = QVBoxLayout(self.playlist_settings)
+        playlist_layout.setContentsMargins(16, 15, 16, 16)
+        playlist_layout.setSpacing(8)
+        section_title = QLabel("PLAYLIST ATIVA")
+        section_title.setObjectName("settingsTitle")
+        playlist_layout.addWidget(section_title)
+        description = QLabel("Escolha qual biblioteca será usada para assistir.")
+        description.setWordWrap(True)
+        description.setObjectName("muted")
+        playlist_layout.addWidget(description)
+        self.playlists = QComboBox()
+        self.playlists.setObjectName("activePlaylistSelector")
+        self.playlists.setAccessibleName("Playlist ativa")
+        self.playlists.setToolTip("Alternar a playlist ativa do AURORA")
+        self.playlists.setSizePolicy(self.playlists.sizePolicy().horizontalPolicy(),
+                                     self.playlists.sizePolicy().verticalPolicy())
+        self.playlists.currentIndexChanged.connect(self._on_playlist)
+        playlist_layout.addWidget(self.playlists)
+        self.playlist_settings.hide()
+        content_layout.addWidget(self.playlist_settings)
+
         self.search = QLineEdit()
         self.search.setPlaceholderText("Buscar canais, filmes, séries...")
         self.search.textChanged.connect(self._search)
@@ -844,7 +931,7 @@ class MainWindow(legacy.MainWindow):
         titles = {
             "home":"Continuar assistindo", "live":"Canais disponíveis",
             "movie":"Filmes", "series":"Séries", "episodes":self.series_name,
-            "favorites":"Favoritos", "settings":"Minhas playlists",
+            "favorites":"Favoritos", "settings":"Playlists e preferências",
             "football":"Agenda de futebol",
         }
         self.heading.setText(titles.get(self.mode,"AURORA IPTV"))
@@ -853,6 +940,7 @@ class MainWindow(legacy.MainWindow):
         self.search.setVisible(self.mode not in ("settings","episodes"))
         self.previous.setVisible(self.mode == "episodes")
         self.theme_select.setVisible(self.mode == "settings")
+        self.playlist_settings.setVisible(self.mode == "settings")
         self.theme_select.blockSignals(True)
         self.theme_select.setCurrentIndex(max(0,self.theme_select.findData(self.settings.value("theme","system"))))
         self.theme_select.blockSignals(False)
@@ -869,7 +957,7 @@ class MainWindow(legacy.MainWindow):
                                    else "⚙ Configurar EPG" if self.mode == "football"
                                    else "⚙ Gerenciar playlists")
         if self.mode == "settings":
-            self.subtitle.setText("Clique com o botão direito para editar ou excluir listas. A atualização preserva seus dados.")
+            self.subtitle.setText("Selecione a biblioteca ativa, adicione listas ou gerencie as existentes. Seus favoritos e progresso são preservados.")
         elif self.mode == "football":
             self.subtitle.setText("Agenda do EPG e canais esportivos disponíveis.")
         elif self.mode == "series":
