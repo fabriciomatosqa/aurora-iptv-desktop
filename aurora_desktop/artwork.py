@@ -25,8 +25,13 @@ def valid_artwork(value: object) -> str:
     value = value.strip()
     if not value or len(value) > 8192:
         return ""
-    parsed = urlsplit(value)
-    if parsed.scheme in ("http", "https") and parsed.hostname:
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+    except ValueError:
+        # Broken providers sometimes supply malformed bracketed URLs.
+        return ""
+    if parsed.scheme in ("http", "https") and hostname:
         return value
     if parsed.scheme == "file" and parsed.path:
         return value
@@ -61,7 +66,10 @@ def image_cache_file(directory: Path, url: str) -> Path:
 
 def xtream_stream_id(url: str, kind: str) -> str:
     """Match exact Xtream stream identifiers; never guess by title."""
-    parsed = urlsplit(url)
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return ""
     path = unquote(parsed.path).strip("/")
     segments = path.split("/")
     directory = "live" if kind == "live" else "movie" if kind == "movie" else ""
