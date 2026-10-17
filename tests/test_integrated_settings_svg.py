@@ -24,7 +24,11 @@ def test_header_has_full_aurora_and_version_moves_to_lower_right(tmp_path,monkey
         assert not win.menuBar().isVisible()
         assert not win.menuBar().actions()
         assert win.banner.width()==win.header_widget.width()
-        # Artwork is fetched and bundled during packaging; source tests may\n        # legitimately have no JPEG until build_assets.py has run.\n        from aurora_desktop.modern import asset\n        if asset("aurora_banner.jpg").exists():\n            assert not win.banner._image.isNull()
+        # Artwork is fetched and bundled during packaging; source tests may
+        # legitimately have no JPEG until build_assets.py has run.
+        from aurora_desktop.modern import asset
+        if asset("aurora_banner.jpg").exists():
+            assert not win.banner._image.isNull()
         assert win.banner.height()>=198
         labels=[w.text() for w in win.banner.findChildren(QLabel)]
         assert not any("DESKTOP" in label or "v0." in label for label in labels)
@@ -92,7 +96,9 @@ def test_update_controls_call_existing_controller_without_new_download_code(tmp_
         class Stub:
             def __init__(self):
                 self.channels=[]
-                self.checks=[]\n                self.downloader=None\n                self.checker=None
+                self.checks=[]
+                self.downloader=None
+                self.checker=None
             def set_channel(self,channel):
                 self.channels.append(channel)
             def check(self,manual=False):
