@@ -2091,6 +2091,7 @@ class MainWindow(legacy.MainWindow):
             QMessageBox.information(self,"EPG em andamento","Aguarde a conclusão da atualização do guia.")
             event.ignore()
             return
+        self._live_badge_timer.stop()
         super().closeEvent(event)
 
 
