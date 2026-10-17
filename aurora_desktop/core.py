@@ -253,8 +253,7 @@ class Library:
         identity=playlist_account_identity(source)
         with self.connect() as db:
             for existing in db.execute("SELECT source FROM playlists"):
-                if (existing["source"]==source or
-                        identity is not None and
+                if (identity is not None and
                         playlist_account_identity(existing["source"])==identity):
                     raise ValueError("Essa biblioteca já foi cadastrada; alterne o formato na playlist existente.")
             cur = db.execute('INSERT INTO playlists (name,source) VALUES (?,?)', (name, source))
