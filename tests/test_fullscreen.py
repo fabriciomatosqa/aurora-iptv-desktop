@@ -54,7 +54,7 @@ def test_fullscreen_does_not_detach_or_replace_video_output(tmp_path, monkeypatc
         assert window.player_controls.isVisible()
         assert window.player_actions.isVisible()
         assert not window.fs_overlay.isVisible()
-        assert window.menuBar().isVisible()
+        assert not window.menuBar().isVisible()
     finally:
         window.close()
 
