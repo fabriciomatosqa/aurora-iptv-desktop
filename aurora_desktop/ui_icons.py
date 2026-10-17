@@ -158,6 +158,59 @@ def icon_for(name: str, size: int = 24, light: bool = False) -> QIcon:
         p.setBrush(QColor("#132b43") if not light else QColor("#eaf6fa"))
         p.drawEllipse(QRectF(-3.45,-3.45,6.9,6.9))
         p.restore()
+    elif name == "sparkle":
+        for cx,cy,r in [(12,12,9.7),(19,5.4,2.2)]:
+            shape=QPainterPath()
+            shape.moveTo(cx,cy-r)
+            shape.quadTo(cx+r*.15,cy-r*.15,cx+r,cy)
+            shape.quadTo(cx+r*.15,cy+r*.15,cx,cy+r)
+            shape.quadTo(cx-r*.15,cy+r*.15,cx-r,cy)
+            shape.quadTo(cx-r*.15,cy-r*.15,cx,cy-r)
+            shape.closeSubpath()
+            outline(shape,cyan,.55,cyan)
+    elif name == "play":
+        shape=QPainterPath()
+        shape.moveTo(7,4.6)
+        shape.quadTo(6.1,4.4,6.1,6)
+        shape.lineTo(6.1,18)
+        shape.quadTo(6.1,19.6,7.5,19.1)
+        shape.lineTo(18.1,13)
+        shape.quadTo(19.5,12,18.1,11)
+        shape.closeSubpath()
+        outline(shape,cyan,1.4,cyan)
+    elif name == "pause":
+        rounded(5.5,4.4,4.7,15.2,1.4,cyan,cyan,1)
+        rounded(13.8,4.4,4.7,15.2,1.4,cyan,cyan,1)
+    elif name in ("volume", "mute"):
+        shape=QPainterPath()
+        shape.moveTo(3,9)
+        shape.lineTo(7.5,9)
+        shape.lineTo(13,4.8)
+        shape.lineTo(13,19.2)
+        shape.lineTo(7.5,15)
+        shape.lineTo(3,15)
+        shape.closeSubpath()
+        outline(shape,cyan,1.7, QColor("#1e4358") if not light else QColor("#d7f0f0"))
+        if name == "volume":
+            for rad in [6,10]:
+                curve=QPainterPath()
+                curve.arcMoveTo(QRectF(9.0,12-rad,rad*2,rad*2),-52)
+                curve.arcTo(QRectF(9.0,12-rad,rad*2,rad*2),-52,104)
+                outline(curve,blue,1.6)
+        else:
+            p.setPen(QPen(gold,2,Qt.PenStyle.SolidLine,Qt.PenCapStyle.RoundCap))
+            p.drawLine(QPointF(17,9),QPointF(22,15))
+            p.drawLine(QPointF(22,9),QPointF(17,15))
+    elif name in ("fullscreen","exit-fullscreen"):
+        p.setPen(QPen(cyan,2.1,Qt.PenStyle.SolidLine,Qt.PenCapStyle.RoundCap))
+        if name == "fullscreen":
+            for x,y,dx,dy in [(4,4,5,5),(20,4,-5,5),(4,20,5,-5),(20,20,-5,-5)]:
+                p.drawLine(QPointF(x+dx,y),QPointF(x,y))
+                p.drawLine(QPointF(x,y),QPointF(x,y+dy))
+        else:
+            for x,y,dx,dy in [(4,4,5,5),(20,4,-5,5),(4,20,5,-5),(20,20,-5,-5)]:
+                p.drawLine(QPointF(x+dx,y),QPointF(x+dx,y+dy))
+                p.drawLine(QPointF(x,y+dy),QPointF(x+dx,y+dy))
     elif name == "refresh":
         circle = QPainterPath()
         circle.arcMoveTo(QRectF(3.5,3.5,17,17),45)
