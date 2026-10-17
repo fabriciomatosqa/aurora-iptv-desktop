@@ -16,7 +16,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QDialog, QTextBrowser,
-    QPushButton, QProgressBar, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu, QGraphicsOpacityEffect, QStyleOptionSlider, QStyle, QStyledItemDelegate,
+    QPushButton, QProgressBar, QScrollArea, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu, QGraphicsOpacityEffect, QStyleOptionSlider, QStyle, QStyledItemDelegate,
 )
 
 from . import app as legacy
@@ -289,14 +289,14 @@ class Covers(QObject):
         self.generation = 0
         self.max_items = 250
         self.blanks = {kind:self.placeholder(kind) for kind in
-                       ("movie","series","live","football")}
+                       ("movie","series","live","football","other")}
 
     def placeholder(self, kind: str = "movie"):
         """A designed artwork tile rather than a generic diamond glyph."""
         kind = {
             "live": "live", "football_channel": "live", "football": "football",
-            "series": "series", "movie": "movie",
-        }.get(kind, "movie")
+            "series": "series", "movie": "movie", "other": "other",
+        }.get(kind, "other")
         pixmap = QPixmap(84, 104)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
@@ -437,11 +437,19 @@ class MainWindow(legacy.MainWindow):
         side.setContentsMargins(18,19,18,12)
         side.setSpacing(11)
         side.addSpacing(4)
+        nav_scroll = QScrollArea(sidebar)
+        nav_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        nav_scroll.setWidgetResizable(True)
+        nav_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        nav_content = QWidget(nav_scroll)
+        nav_buttons = QVBoxLayout(nav_content)
+        nav_buttons.setContentsMargins(0,0,0,0)
+        nav_buttons.setSpacing(7)
         self.nav = {}
         for mode,title in [
             ("home","Início"),("live","Ao vivo"),("movie","Filmes"),
             ("series","Séries"),("football","Futebol"),
-            ("favorites","Favoritos"),("settings","Configurações")
+            ("other","Não classificados"),("favorites","Favoritos"),("settings","Configurações")
         ]:
             button = QPushButton(title)
             button.setObjectName("navButton")
@@ -452,8 +460,10 @@ class MainWindow(legacy.MainWindow):
             button.setToolTip(title)
             button.clicked.connect(lambda checked=False,m=mode:self.navigate(m))
             self.nav[mode] = button
-            side.addWidget(button)
-        side.addStretch()
+            nav_buttons.addWidget(button)
+        nav_buttons.addStretch()
+        nav_scroll.setWidget(nav_content)
+        side.addWidget(nav_scroll,1)
         from . import __version__
         footer = QLabel(f"DESKTOP  /  v{__version__}")
         footer.setObjectName("versionFooter")
@@ -1899,7 +1909,8 @@ class MainWindow(legacy.MainWindow):
     def _refresh(self):
         titles = {
             "home":"Continuar assistindo", "live":"Canais disponíveis",
-            "movie":"Filmes", "series":"Séries", "episodes":self.series_name,
+            "movie":"Filmes", "series":"Séries", "other":"Não classificados",
+            "episodes":self.series_name,
             "favorites":"Favoritos", "settings":"Playlists e preferências",
             "football":"Agenda de futebol",
         }
@@ -1946,14 +1957,14 @@ class MainWindow(legacy.MainWindow):
             self.subtitle.setText("Gêneros de séries, plataformas e categorias da playlist.")
         else:
             self.subtitle.setText("Escolha uma categoria; a lista carrega conforme você rola.")
-        if self.playlist_id is not None and self.mode in ("live","movie","series") and self.playlist_id not in self._indexed:
+        if self.playlist_id is not None and self.mode in ("live","movie","series","other") and self.playlist_id not in self._indexed:
             self.results.clear()
             self.groups.clear()
             self.page.setText("Organizando as categorias em segundo plano...")
             if self.playlist_id not in self._index_error:
                 self._start_index(self.playlist_id)
             return
-        if self.mode in ("live","movie","series") and self.playlist_id is not None:
+        if self.mode in ("live","movie","series","other") and self.playlist_id is not None:
             categories = self.library.categories(self.playlist_id,self.mode)
             choices = [(f"Todos ({sum(g['total'] for g in categories):,})",None)]
             choices += [(f"{g['title']}  ·  {g['total']:,}",g["title"]) for g in categories]
@@ -2363,7 +2374,7 @@ class MainWindow(legacy.MainWindow):
     def _index_done(self):
         self.index_thread = None
         self.index_worker = None
-        if (self.playlist_id is not None and self.mode in ("live","movie","series")
+        if (self.playlist_id is not None and self.mode in ("live","movie","series","other")
                 and self.playlist_id not in self._indexed
                 and self.playlist_id not in self._index_error):
             self._refresh()
@@ -2444,6 +2455,40 @@ class MainWindow(legacy.MainWindow):
         self.guide_busy.hide()
         self.football_refresh.setText("Atualizar")
         self.update_epg_button.setText("Atualizar agenda de futebol")
+
+    def _context(self, position):
+        if self.mode == "settings":
+            return super()._context(position)
+        if self.mode not in ("live","movie","series","episodes","other"):
+            return
+        item = self.results.itemAt(position)
+        if item is None or self.playlist_id is None:
+            return
+        row = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(row,dict) or not row.get("key"):
+            return
+        if self.mode == "series" and row.get("episodes"):
+            self.status.setText("Abra a série para corrigir a classificação de episódios individuais.")
+            return
+        menu = QMenu(self)
+        choices = {}
+        for kind, title in (
+            ("live","Mover para Ao vivo"),("movie","Mover para Filmes"),
+            ("series","Mover para Séries"),("other","Marcar como não classificado")
+        ):
+            action = menu.addAction(title)
+            action.setEnabled(row.get("kind") != kind)
+            choices[action] = kind
+        selected = menu.exec(self.results.mapToGlobal(position))
+        if selected not in choices:
+            return
+        try:
+            self.library.set_content_kind(self.playlist_id,row["key"],choices[selected])
+        except ValueError as exc:
+            QMessageBox.warning(self,"Classificação",str(exc))
+            return
+        self.status.setText("Classificação corrigida e preservada nas atualizações da playlist.")
+        self._refresh()
 
     def _import_active(self):
         if self.thread is None or not self.thread.isRunning():
