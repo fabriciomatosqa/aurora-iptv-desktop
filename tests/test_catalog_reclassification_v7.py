@@ -211,3 +211,35 @@ def test_sparse_refresh_preserves_original_synopsis_logo_and_user_state(tmp_path
     assert current["url"].endswith("/changed")
     assert current["logo"]=="https://images.invalid/film.png"
     assert current["synopsis"]=="Sinopse preservada"
+
+
+def test_migrated_old_db_without_xui_ids_keeps_favorites(tmp_path):
+    src=tmp_path/"prior.m3u"
+    lib=LibraryV2(tmp_path/"prior.db")
+    pid=lib.add_playlist("Minha lista",str(src))
+    original=[
+        _line(f"Filme único {i}","Filmes",
+              f"https://cdn.invalid/play/old-{i}",str(i))
+        for i in range(1,61)
+    ]
+    _write(src,original)
+    lib.import_playlist(pid)
+    movie=lib.browse(pid,"movie",None)[0]
+    lib.save_progress(pid,movie["key"],198)
+    lib.set_favorite(pid,"item:"+movie["key"],"movie",movie["title"],True)
+    # Reproduce an older database with URL-keyed records but no xui-id.
+    with lib.connect() as db:
+        db.execute("UPDATE items SET xui_id='' WHERE playlist_id=?",(pid,))
+    updated=[
+        _line(f"Filme único {i}","Filmes",
+              f"https://cdn.invalid/play/hls-{i}",str(i))
+        for i in range(1,61)
+    ]
+    _write(src,updated)
+    lib.import_playlist(pid)
+    assert lib.get_progress(pid,movie["key"])==198
+    assert lib.is_favorite(pid,"item:"+movie["key"])
+    with lib.connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM items WHERE playlist_id=?",(pid,)).fetchone()[0]==60
+        row=db.execute("SELECT url,xui_id FROM items WHERE key=?",(movie["key"],)).fetchone()
+        assert "/hls-" in row["url"] and row["xui_id"]!=""
