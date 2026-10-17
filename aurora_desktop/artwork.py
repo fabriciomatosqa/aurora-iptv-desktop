@@ -30,7 +30,7 @@ def valid_artwork(value: object) -> str:
     # urlsplit(). Check them first, otherwise Windows local artwork is
     # discarded while the identical Linux test passes.
     if value[0].isascii() and value[0].isalpha() and len(value)>=3:
-        if value[1]==":" and value[2] in ("\\\\","/"):
+        if value[1]==":" and value[2] in (chr(92), "/"):
             return value if PureWindowsPath(value).is_absolute() else ""
     # M3U playlists often publish protocol-relative CDN addresses.
     if value.startswith("//"):
