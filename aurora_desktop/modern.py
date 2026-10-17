@@ -25,6 +25,8 @@ from .svg_icons import svg_icon_for
 from .sports_data import fetch_score_updates, fixture_key, national_artwork
 from .football_widgets import BadgeLoader, FootballCardWidget
 from .pip_window import PiPWindow
+from .artwork import pick_best_art, valid_artwork, image_cache_file
+from .core import data_directory
 
 # The original Qt player keeps the same settings, DB path, resuming and playlist management.
 legacy.Library = LibraryV2
@@ -293,93 +295,193 @@ class FootballLiveDelegate(QStyledItemDelegate):
 
 
 class Covers(QObject):
-    """Small bounded asynchronous cover cache; Qt requests never block the GUI."""
+    """Lazy card artwork with bounded RAM, network and persistent disk cache.
+
+    The cache stores images by a hash of their complete URL, so provider
+    passwords are never exposed in filenames. Qt GUI work remains nonblocking.
+    """
+    MAX_IMAGE_BYTES=3*1024*1024
+    MAX_DISK_BYTES=128*1024*1024
+
     def __init__(self, list_widget: QListWidget):
         super().__init__(list_widget)
         self.widget = list_widget
         self.network = QNetworkAccessManager(self)
         self.queue = deque()
+        self.waiting = {}
         self.active = 0
         self.cache = {}
-        self.failed = set()
+        self.failed = {}
         self.generation = 0
-        self.max_items = 250
+        self.max_items = 200
+        self.download_count = 0
+        self.disk_dir = data_directory() / "image_cache"
+        self.disk_dir.mkdir(parents=True, exist_ok=True)
         self.blanks = {kind:self.placeholder(kind) for kind in
                        ("movie","series","live","football")}
 
     def placeholder(self, kind: str = "movie"):
-        """A designed artwork tile rather than a generic diamond glyph."""
         kind = {
             "live": "live", "football_channel": "live", "football": "football",
             "series": "series", "movie": "movie",
         }.get(kind, "movie")
-        pixmap = QPixmap(84, 104)
+        pixmap = QPixmap(70, 88)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        gradient = QLinearGradient(0, 0, 84, 104)
+        gradient = QLinearGradient(0, 0, 70, 88)
         gradient.setColorAt(0, QColor("#1a4a66"))
         gradient.setColorAt(.52, QColor("#234167"))
         gradient.setColorAt(1, QColor("#302354"))
         painter.setPen(QColor("#386c7c"))
         painter.setBrush(QBrush(gradient))
-        painter.drawRoundedRect(1, 1, 82, 102, 11, 11)
-        symbol = svg_icon_for(kind, 45).pixmap(QSize(45, 45))
-        painter.drawPixmap((84-symbol.width())//2, (104-symbol.height())//2, symbol)
+        painter.drawRoundedRect(1, 1, 68, 86, 10, 10)
+        symbol = svg_icon_for(kind, 39).pixmap(QSize(39, 39))
+        painter.drawPixmap((70-symbol.width())//2, (88-symbol.height())//2, symbol)
         painter.end()
         return QIcon(pixmap)
+
+    @staticmethod
+    def image_icon(source: QPixmap, kind: str):
+        """Movie/series artwork fills the poster; TV logos retain proportions."""
+        tile=QPixmap(70,88)
+        tile.fill(Qt.GlobalColor.transparent)
+        painter=QPainter(tile)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        shape=QPainterPath()
+        shape.addRoundedRect(QRectF(0,0,70,88),9,9)
+        painter.setClipPath(shape)
+        painter.fillRect(QRectF(0,0,70,88),QColor("#16364c"))
+        if kind in ("live","football_channel"):
+            rendered=source.scaled(QSize(64,76),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
+            painter.drawPixmap((70-rendered.width())//2,
+                               (88-rendered.height())//2,rendered)
+        else:
+            rendered=source.scaled(QSize(70,88),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation)
+            painter.drawPixmap((70-rendered.width())//2,
+                               (88-rendered.height())//2,rendered)
+        painter.end()
+        return QIcon(tile)
 
     def reset(self):
         self.generation += 1
         self.queue.clear()
+        self.waiting.clear()
+
+    def _icon_for(self, url, kind, source):
+        key=(url,kind)
+        if key not in self.cache:
+            self.cache[key]=self.image_icon(source,kind)
+            if len(self.cache)>self.max_items:
+                self.cache.pop(next(iter(self.cache)))
+        return self.cache[key]
 
     def enqueue(self, item, url, kind: str = "movie"):
         category = "live" if kind == "football_channel" else kind
-        item.setIcon(self.blanks.get(category, self.blanks["movie"]))
-        if not url or not url.startswith(("https://","http://")):
+        item.setIcon(self.blanks.get(category,self.blanks["movie"]))
+        url=valid_artwork(url)
+        if not url:
             return
-        if url in self.cache:
-            item.setIcon(self.cache[url])
-        elif url not in self.failed and len(self.queue) < 500:
-            self.queue.append((item,url,self.generation))
+        icon=self.cache.get((url,category))
+        if icon is not None:
+            item.setIcon(icon)
+            return
+        local=""
+        if url.startswith("file://"):
+            local=QUrl(url).toLocalFile()
+        elif Path(url).is_absolute():
+            local=url
+        if local:
+            image=QPixmap(local)
+            if not image.isNull():
+                item.setIcon(self._icon_for(url,category,image))
+            return
+        path=image_cache_file(self.disk_dir,url)
+        if path.is_file():
+            try:
+                # 30 days; expired covers are refreshed after provider changes.
+                if time.time()-path.stat().st_mtime < 30*86400:
+                    image=QPixmap(str(path))
+                    if not image.isNull():
+                        item.setIcon(self._icon_for(url,category,image))
+                        return
+            except OSError:
+                pass
+        if self.failed.get(url,0)>time.monotonic():
+            return
+        key=(self.generation,url)
+        if key in self.waiting:
+            self.waiting[key].append((item,category))
+        elif len(self.queue)<500:
+            self.waiting[key]=[(item,category)]
+            self.queue.append(key)
             self._dispatch()
 
     def _dispatch(self):
-        while self.active < 5 and self.queue:
-            item,url,generation = self.queue.popleft()
-            if generation != self.generation:
+        while self.active<5 and self.queue:
+            generation,url=self.queue.popleft()
+            key=(generation,url)
+            if generation!=self.generation or key not in self.waiting:
                 continue
-            req = QNetworkRequest(QUrl(url))
-            req.setTransferTimeout(9_000)
-            self.active += 1
-            reply = self.network.get(req)
-            reply.finished.connect(lambda r=reply,it=item,u=url,g=generation:self._done(r,it,u,g))
+            request=QNetworkRequest(QUrl(url))
+            request.setTransferTimeout(9000)
+            self.active+=1
+            reply=self.network.get(request)
+            reply.downloadProgress.connect(
+                lambda downloaded,total,r=reply: r.abort()
+                if downloaded>self.MAX_IMAGE_BYTES else None)
+            reply.finished.connect(
+                lambda r=reply,k=key: self._done(r,k))
 
-    def _done(self, reply, item, url, generation):
-        self.active -= 1
+    def _done(self, reply, key):
+        self.active-=1
+        generation,url=key
         try:
-            data = bytes(reply.readAll())
-            if reply.error() or len(data) > 2_000_000:
-                self.failed.add(url)
-            else:
-                pixmap = QPixmap()
-                if pixmap.loadFromData(data) and not pixmap.isNull():
-                    scaled = pixmap.scaled(QSize(72,86),Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
-                    icon = QIcon(scaled)
-                    self.cache[url] = icon
-                    if len(self.cache) > self.max_items:
-                        self.cache.pop(next(iter(self.cache)))
-                    if generation == self.generation:
-                        try:
-                            if item.listWidget() is self.widget:
-                                item.setIcon(icon)
-                        except RuntimeError:
-                            pass
-                else:
-                    self.failed.add(url)
+            data=bytes(reply.readAll())
+            pixmap=QPixmap()
+            if (reply.error() or not data or len(data)>self.MAX_IMAGE_BYTES
+                    or not pixmap.loadFromData(data)):
+                self.failed[url]=time.monotonic()+600
+                return
+            # Persist the original bytes atomically. URLs (and credentials)
+            # are stored only as hashes; no playlist contents are written.
+            path=image_cache_file(self.disk_dir,url)
+            try:
+                temporary=path.with_suffix(".tmp")
+                temporary.write_bytes(data)
+                temporary.replace(path)
+                self.download_count+=1
+                if self.download_count%60==0:
+                    self._prune_disk_cache()
+            except OSError:
+                pass
+            if generation==self.generation:
+                for item,kind in self.waiting.get(key,[]):
+                    try:
+                        if item.listWidget() is self.widget:
+                            item.setIcon(self._icon_for(url,kind,pixmap))
+                    except RuntimeError:
+                        pass
         finally:
+            self.waiting.pop(key,None)
             reply.deleteLater()
             self._dispatch()
+
+    def _prune_disk_cache(self):
+        try:
+            entries=[p for p in self.disk_dir.glob("*.img") if p.is_file()]
+            entries.sort(key=lambda p:p.stat().st_mtime,reverse=True)
+            total=0
+            for path in entries:
+                total+=path.stat().st_size
+                if total>self.MAX_DISK_BYTES:
+                    path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 class GuideWorker(QObject):
@@ -2157,7 +2259,7 @@ class MainWindow(legacy.MainWindow):
         item.setToolTip(label.replace("\n", " — "))
         self.results.addItem(item)
         if record.get("kind") != "football":
-            self.covers.enqueue(item,record.get("logo",""),record.get("kind","movie"))
+            self.covers.enqueue(item,pick_best_art(record),record.get("kind","movie"))
         return item
 
     def _load_items(self,reset=False):
