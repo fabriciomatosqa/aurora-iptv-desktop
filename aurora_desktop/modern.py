@@ -346,6 +346,8 @@ class MainWindow(legacy.MainWindow):
         root = QWidget(self)
         root.setObjectName("appRoot")
         self.setCentralWidget(root)
+        # Preferences are fully accessible via Configurações; no redundant top menus.
+        self.menuBar().hide()
         self.page_layout = QVBoxLayout(root)
         self.page_layout.setSpacing(0)
         self.page_layout.setContentsMargins(0,0,0,0)
@@ -981,7 +983,7 @@ class MainWindow(legacy.MainWindow):
         self.status.show()
         self.player_controls.show()
         self.player_actions.show()
-        self.menuBar().show()
+        # Keep the old top menu permanently hidden; settings own its actions.
         if self._saved_minimum_size is not None:
             self.setMinimumSize(self._saved_minimum_size)
         self.showNormal()
@@ -1157,9 +1159,24 @@ class MainWindow(legacy.MainWindow):
             QLabel#versionTag {{
                 font-size:12px;color:{muted};padding:4px 0;
             }}
-            QLabel#sidebarFooter {{
-                font-size:11px;color:{muted};padding:9px 3px;
+            QLabel#versionFooter {{
+                font-size:11px;color:{muted};font-weight:650;
+                padding:12px 2px 3px 0;
                 border-top:1px solid {border};
+            }}
+            QFrame#configCard {{
+                background:{inner};border:1px solid {border};
+                border-radius:13px;
+            }}
+            QFrame#configCard QLabel {{
+                background:transparent;border:none;
+            }}
+            QPushButton#settingsAction {{
+                text-align:left;
+                background:{row};padding:11px 12px;
+            }}
+            QPushButton#settingsAction:hover {{
+                background:{hover};border-color:{accent};
             }}
             QLabel#heading {{
                 font-size:19px;font-weight:750;color:{text};
@@ -1214,7 +1231,8 @@ class MainWindow(legacy.MainWindow):
             }}
             QPushButton#navButton {{
                 text-align:left;
-                padding:9px 13px 9px 16px;
+                padding:12px 13px 12px 16px;
+                min-height:35px;
                 background:{inner};
                 border:1px solid transparent;
                 border-radius:11px;
@@ -1373,7 +1391,10 @@ class MainWindow(legacy.MainWindow):
         """)
         # Icons are drawn at 3x resolution; gold is reserved for favorites.
         for name, button in self.nav.items():
-            button.setIcon(icon_for(name, 24, light=not dark))
+            button.setIcon(svg_icon_for(name, 30, light=not dark))
+        self.previous.setIcon(svg_icon_for("back",24,light=not dark))
+        self.action.setIcon(svg_icon_for("refresh",24,light=not dark))
+        self.second_action.setIcon(svg_icon_for("manage",24,light=not dark))
         self.favorite.setIcon(icon_for("favorites", 22, light=not dark))
         self.fullscreen_button.setIcon(icon_for("fullscreen",20,light=not dark))
         self.fs_top_exit.setIcon(icon_for("exit-fullscreen",20,light=not dark))
@@ -1828,15 +1849,9 @@ def main():
     window.setWindowTitle(f"AURORA IPTV | Desktop v{__version__}")
     window.update_controller = UpdateController(window)
     app.styleHints().colorSchemeChanged.connect(lambda _:window._theme_apply())
-    appearance = window.menuBar().addMenu("Aparência")
-    for label,value in [("Escuro","dark"),("Claro","light"),("Conforme sistema","system")]:
-        action = appearance.addAction(label)
-        action.triggered.connect(lambda checked=False,k=value:(window.settings.setValue("theme",k),window._theme_apply()))
-    playlist_menu = window.menuBar().addMenu("Playlists")
-    playlist_menu.addAction("Adicionar M3U",window._add_url)
-    playlist_menu.addAction("Atualizar lista",window._import_active)
-    playlist_menu.addAction("Configurações",lambda:window.navigate("settings"))
-    window.update_controller.attach_menu(window.menuBar())
+    # Version, update channel, manual check, theme and playlist operations
+    # live in the Settings page. Automatic checks still run on startup.
+    window.menuBar().hide()
     window.show()
     QTimer.singleShot(350, window.update_controller.show_previous_result)
     QTimer.singleShot(6000, lambda: window.update_controller.check(manual=False))
