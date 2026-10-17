@@ -181,3 +181,45 @@ def test_single_version_source_for_windows_and_debian(tmp_path):
     prepare(tmp_path)
     assert __version__ in (tmp_path/"windows_version.txt").read_text()
     assert (tmp_path/"debian_version.txt").read_text().strip()==deb
+
+def test_date_based_versions_upgrade_legacy_beta_without_misordering():
+    # UI tags: DDMMYY.NN; comparison: Gregorian date then daily revision.
+    values = [
+        "v0.6.0-beta.14", "v0.6.0-beta.15",
+        "v0.6.0-171026.01", "v0.6.0-171026.02",
+        "v0.6.0-181026.01", "v0.6.0-011126.01",
+        "v0.6.0-010127.01",
+    ]
+    parsed = [parse_version(v) for v in values]
+    assert all(v is not None for v in parsed)
+    assert [v.comparison() for v in parsed] == sorted(v.comparison() for v in parsed)
+    assert parse_version("v0.6.0-311126.01") is None  # invalid November 31
+    assert parse_version("v0.6.0-171026.00") is None
+    assert parse_version("v0.6.0-171026.01").date_stamp == 20261017
+    assert parse_version("v0.6.0-010127.01").date_stamp == 20270101
+
+
+def test_discovery_date_release_on_beta_channel_from_beta15():
+    current="0.6.0-beta.15"
+    dated="v0.6.0-171026.01"
+    fixture=FakeResponse([
+        a_release("v0.6.0-beta.14",prerelease=True),
+        a_release(dated,prerelease=True),
+        a_release("v0.6.0-171026.02",prerelease=True,executable=False),
+    ], RELEASES_API+"?per_page=40")
+    result=discover_release(current,"beta","windows",FakeClient(fixture))
+    assert result.tag==dated
+    assert discover_release(current,"stable","windows",FakeClient(fixture)) is None
+    assert discover_release("0.6.0-171026.02","beta","windows",FakeClient(fixture)) is None
+
+
+def test_dated_release_native_metadata_and_debian_name():
+    from aurora_desktop.updater import debian_asset_name
+    native, deb = native_versions("0.6.0-171026.01")
+    assert native[:3] == (0,6,0)
+    assert native[3] == 29001
+    assert deb == "0.6.0~date20261017.01"
+    assert debian_asset_name("v0.6.0-171026.01") == (
+        "aurora-iptv_0.6.0-date20261017.01_amd64.deb")
+    assert debian_asset_name("v0.6.0-beta.14") == (
+        "aurora-iptv_0.6.0-beta14_amd64.deb")
