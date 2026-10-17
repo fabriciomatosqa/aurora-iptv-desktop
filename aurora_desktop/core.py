@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Iterable, Iterator
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 import os
 import re
 import sqlite3
@@ -36,12 +36,33 @@ def data_directory() -> Path:
     return root / 'aurora-iptv'
 
 
+def playlist_account_identity(source: str) -> tuple[str,str,str] | None:
+    """Same-host Xtream HLS/MPEG-TS variants are one library, not two.
+
+    Private authentication values are only compared in memory. Nothing is
+    logged, printed, persisted in new tables or placed in test fixtures.
+    Different hosts (such as a separate SSIPTV proxy) are NOT assumed
+    equivalent without verifying their catalogue.
+    """
+    parsed=urlsplit(source)
+    if parsed.scheme not in ("https","http") or not parsed.hostname:
+        return None
+    if parsed.path.rstrip("/").lower().endswith("/get.php"):
+        args=parse_qs(parsed.query)
+        user=args.get("username",[""])[0]
+        password=args.get("password",[""])[0]
+        if user and password:
+            return parsed.hostname.lower(),user,password
+    return None
+
+
 def content_id(url: str) -> str:
     return sha256(url.encode('utf-8')).hexdigest()
 
 
-def kind_of(group: str, title: str, url: str, type_hint: str = "") -> str:
-    return classify_content(title, group, url, type_hint)
+def kind_of(group: str, title: str, url: str, type_hint: str = "",
+            tvg_id: str = "", provider_kind: str = "") -> str:
+    return classify_content(title, group, url, type_hint, tvg_id, provider_kind)
 
 
 def parse_extinf(line: str) -> dict[str, str]:
@@ -52,7 +73,7 @@ def parse_extinf(line: str) -> dict[str, str]:
     finds the delimiter outside quotes and after the final metadata attribute.
     """
     attrs_matches = list(ATTR_ANY.finditer(line))
-    attrs = {m.group(1).lower(): (m.group(2) or m.group(3)) for m in attrs_matches}
+    attrs = {m.group(1).lower(): (m.group(2) if m.group(2) is not None else (m.group(3) or "")) for m in attrs_matches}
     last_attr_end = max((m.end() for m in attrs_matches), default=0)
     commas = []
     quoted = None
@@ -78,6 +99,7 @@ def parse_extinf(line: str) -> dict[str, str]:
         "logo": pick_best_art(attrs),
         "artwork_fields": attrs,
         "tvg_id": attrs.get("tvg-id", ""),
+        "xui_id": attrs.get("xui-id", "").strip(),
         "type_hint": next((attrs[k] for k in ("media-type","tvg-type","content-type","type") if attrs.get(k)), ""),
         "synopsis": next((attrs[k] for k in ("tvg-description","description","synopsis","plot","summary","tvg-desc","desc")
                          if attrs.get(k)), "")[:12000],
@@ -103,6 +125,7 @@ class Entry:
     tvg_id: str = ''
     type_hint: str = ''
     synopsis: str = ''
+    xui_id: str = ''
 
 
 def parse_m3u(lines: Iterable[str]) -> Iterator[Entry]:
@@ -129,14 +152,15 @@ def parse_m3u(lines: Iterable[str]) -> Iterator[Entry]:
             info = None
             continue
         name = info['title']
-        typ = kind_of(info['group'], name, url, info.get('type_hint', ''))
+        typ = kind_of(info['group'], name, url, info.get('type_hint', ''), info['tvg_id'])
         series, season, episode = episode_info(name) if typ == 'series' else ('', None, None)
         # Give films/series their actual cover priority while channels keep
         # the broadcaster logo. This field is persisted in the existing logo
         # column, so no database migration is required.
         artwork = pick_best_art({**info.get("artwork_fields", {}), "kind":typ}) or info["logo"]
         yield Entry(content_id(url), name, url, info['group'], typ, artwork, series, season, episode,
-                    info['tvg_id'], info.get('type_hint', ''), info.get('synopsis', ''))
+                    info['tvg_id'], info.get('type_hint', ''), info.get('synopsis', ''),
+                    info.get('xui_id',''))
         info = None
 
 
@@ -186,7 +210,8 @@ class Library:
                     group_name TEXT NOT NULL, kind TEXT NOT NULL, logo TEXT NOT NULL,
                     series_name TEXT NOT NULL, season INTEGER, episode INTEGER,
                     tvg_id TEXT NOT NULL DEFAULT '', type_hint TEXT NOT NULL DEFAULT '',
-                    synopsis TEXT NOT NULL DEFAULT '', PRIMARY KEY(playlist_id,key)
+                    synopsis TEXT NOT NULL DEFAULT '',
+                    xui_id TEXT NOT NULL DEFAULT '', PRIMARY KEY(playlist_id,key)
                 );
                 CREATE INDEX IF NOT EXISTS idx_items_kind ON items(playlist_id,kind,title COLLATE NOCASE);
                 CREATE INDEX IF NOT EXISTS idx_items_series ON items(playlist_id,series_name,season,episode);
@@ -202,10 +227,15 @@ class Library:
                     PRIMARY KEY(playlist_id,key)
                 );
             ''')
-        # Existing installations from beta.12 must retain their full library.
+        # Schema migrations keep all existing favorites/progress and keys.
         with self.connect() as db:
-            if "synopsis" not in {r["name"] for r in db.execute("PRAGMA table_info(items)")}:
+            existing = {r["name"] for r in db.execute("PRAGMA table_info(items)")}
+            if "synopsis" not in existing:
                 db.execute("ALTER TABLE items ADD COLUMN synopsis TEXT NOT NULL DEFAULT ''")
+            if "xui_id" not in existing:
+                db.execute("ALTER TABLE items ADD COLUMN xui_id TEXT NOT NULL DEFAULT ''")
+            db.execute("""CREATE INDEX IF NOT EXISTS idx_items_xui_id
+                ON items(playlist_id,xui_id) WHERE xui_id<>''""")
         if os.name != 'nt':
             self.path.chmod(0o600)
 
@@ -220,7 +250,12 @@ class Library:
         scheme = urlsplit(source).scheme.lower()
         if scheme not in ('http', 'https', 'file', '') and not Path(source).is_absolute():
             raise ValueError('Use HTTP, HTTPS ou caminho de arquivo local.')
+        identity=playlist_account_identity(source)
         with self.connect() as db:
+            for existing in db.execute("SELECT source FROM playlists"):
+                if (identity is not None and
+                        playlist_account_identity(existing["source"])==identity):
+                    raise ValueError("Essa biblioteca já foi cadastrada; alterne o formato na playlist existente.")
             cur = db.execute('INSERT INTO playlists (name,source) VALUES (?,?)', (name, source))
             return int(cur.lastrowid)
 
@@ -252,25 +287,117 @@ class Library:
                 url TEXT NOT NULL, group_name TEXT NOT NULL, kind TEXT NOT NULL,
                 logo TEXT NOT NULL, series_name TEXT NOT NULL, season INTEGER, episode INTEGER,
                 tvg_id TEXT NOT NULL DEFAULT '', type_hint TEXT NOT NULL DEFAULT '',
-                synopsis TEXT NOT NULL DEFAULT '', PRIMARY KEY(playlist_id,key)
+                synopsis TEXT NOT NULL DEFAULT '', xui_id TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY(playlist_id,key)
             )''')
             pending = []
             for entry in parse_m3u(playlist_lines(location)):
                 pending.append((playlist_id, entry.key, entry.title, entry.url, entry.group_name,
                                 entry.kind, entry.logo, entry.series_name, entry.season, entry.episode,
-                                entry.tvg_id, entry.type_hint, entry.synopsis))
+                                entry.tvg_id, entry.type_hint, entry.synopsis, entry.xui_id))
                 total += 1
                 if len(pending) >= 1000:
-                    db.executemany('INSERT OR REPLACE INTO staging VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', pending)
+                    db.executemany('INSERT OR REPLACE INTO staging VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', pending)
                     pending.clear()
             if pending:
-                db.executemany('INSERT OR REPLACE INTO staging VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', pending)
+                db.executemany('INSERT OR REPLACE INTO staging VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', pending)
             if total == 0:
                 raise ValueError('A lista não contém entradas M3U válidas. Seu catálogo anterior foi preservado.')
+            old_count = db.execute("SELECT COUNT(*) FROM items WHERE playlist_id=?",
+                                   (playlist_id,)).fetchone()[0]
+            # M3U output protocols (HLS/MPEG-TS) can change stream URLs
+            # without changing the provider's item ID. Preserve the previously
+            # stored URL key so favorites and playback progress still resolve.
+            # Skip IDs that are duplicated in either snapshot.
+            if merge:
+                db.execute("""UPDATE items SET xui_id=(
+                    SELECT s.xui_id FROM staging s
+                    WHERE s.playlist_id=items.playlist_id AND s.key=items.key)
+                    WHERE playlist_id=? AND xui_id='' AND EXISTS (
+                    SELECT 1 FROM staging s WHERE s.key=items.key
+                    AND s.playlist_id=items.playlist_id AND s.xui_id<>'')""",(playlist_id,))
+                db.execute("""CREATE TEMP TABLE unambiguous_source_ids AS
+                    SELECT xui_id FROM staging WHERE xui_id<>''
+                    GROUP BY xui_id HAVING COUNT(*)=1""")
+                db.execute("""CREATE TEMP TABLE key_remaps AS
+                    SELECT s.key AS incoming_key, MIN(i.key) AS stable_key
+                    FROM staging s JOIN unambiguous_source_ids u ON u.xui_id=s.xui_id
+                    JOIN items i ON i.playlist_id=s.playlist_id AND i.xui_id=s.xui_id
+                    WHERE s.playlist_id=? AND i.key<>s.key
+                    AND NOT EXISTS (SELECT 1 FROM staging active
+                                    WHERE active.key=i.key)
+                    GROUP BY s.key HAVING COUNT(*)=1""",(playlist_id,))
+                # First upgrade from an older Desktop may have no xui_id
+                # column data. Exact *unique* group+title can bootstrap IDs;
+                # never guess if either snapshot contains duplicate titles.
+                db.execute("""CREATE TEMP TABLE unique_old_titles AS
+                    SELECT group_name,title,MIN(key) AS key FROM items
+                    WHERE playlist_id=? AND xui_id=''
+                    GROUP BY group_name,title HAVING COUNT(*)=1""",(playlist_id,))
+                db.execute("""CREATE UNIQUE INDEX idx_old_titles
+                    ON unique_old_titles(group_name,title)""")
+                db.execute("""CREATE TEMP TABLE unique_new_titles AS
+                    SELECT group_name,title,MIN(key) AS key FROM staging
+                    GROUP BY group_name,title HAVING COUNT(*)=1""")
+                db.execute("""INSERT INTO key_remaps (incoming_key,stable_key)
+                    SELECT s.key,i.key FROM unique_new_titles s
+                    JOIN unique_old_titles i
+                    ON i.group_name=s.group_name AND i.title=s.title
+                    WHERE s.key<>i.key
+                    AND s.key NOT IN (SELECT incoming_key FROM key_remaps)
+                    AND i.key NOT IN (SELECT key FROM staging)
+                    AND i.key NOT IN (SELECT stable_key FROM key_remaps)""")
+                db.execute("""UPDATE staging SET key=(
+                    SELECT m.stable_key FROM key_remaps m
+                    WHERE m.incoming_key=staging.key)
+                    WHERE key IN (SELECT incoming_key FROM key_remaps)""")
+                matched_count = db.execute("""SELECT COUNT(*) FROM staging s
+                    JOIN items i ON i.playlist_id=s.playlist_id AND i.key=s.key
+                    WHERE s.playlist_id=?""",(playlist_id,)).fetchone()[0]
             if not merge:
                 db.execute('DELETE FROM items WHERE playlist_id=?', (playlist_id,))
-            db.execute('''INSERT OR REPLACE INTO items (playlist_id,key,title,url,group_name,kind,logo,series_name,season,episode,tvg_id,type_hint,synopsis)
-                          SELECT playlist_id,key,title,url,group_name,kind,logo,series_name,season,episode,tvg_id,type_hint,synopsis FROM staging''')
+            db.execute('''INSERT INTO items
+                    (playlist_id,key,title,url,group_name,kind,logo,series_name,
+                     season,episode,tvg_id,type_hint,synopsis,xui_id)
+                    SELECT playlist_id,key,title,url,group_name,kind,logo,series_name,
+                           season,episode,tvg_id,type_hint,synopsis,xui_id FROM staging WHERE 1
+                    ON CONFLICT(playlist_id,key) DO UPDATE SET
+                        title=excluded.title,url=excluded.url,
+                        group_name=excluded.group_name,kind=excluded.kind,
+                        logo=COALESCE(NULLIF(excluded.logo,''),items.logo),
+                        series_name=excluded.series_name,
+                        season=excluded.season,episode=excluded.episode,
+                        tvg_id=COALESCE(NULLIF(excluded.tvg_id,''),items.tvg_id),
+                        type_hint=COALESCE(NULLIF(excluded.type_hint,''),items.type_hint),
+                        synopsis=COALESCE(NULLIF(excluded.synopsis,''),items.synopsis),
+                        xui_id=COALESCE(NULLIF(excluded.xui_id,''),items.xui_id)
+                    WHERE items.title IS NOT excluded.title
+                       OR items.url IS NOT excluded.url
+                       OR items.group_name IS NOT excluded.group_name
+                       OR items.kind IS NOT excluded.kind
+                       OR items.series_name IS NOT excluded.series_name
+                       OR items.season IS NOT excluded.season
+                       OR items.episode IS NOT excluded.episode
+                       OR (excluded.logo<>'' AND items.logo IS NOT excluded.logo)
+                       OR (excluded.tvg_id<>'' AND items.tvg_id IS NOT excluded.tvg_id)
+                       OR (excluded.type_hint<>'' AND items.type_hint IS NOT excluded.type_hint)
+                       OR (excluded.synopsis<>'' AND items.synopsis IS NOT excluded.synopsis)
+                       OR (excluded.xui_id<>'' AND items.xui_id IS NOT excluded.xui_id)''')
+            # A nearly complete refresh is safe to reconcile. A truncated
+            # remote response must never erase a healthy offline library.
+            if merge:
+                if (old_count and total>=50 and
+                        total*100>=old_count*97 and
+                        matched_count*100>=min(total,old_count)*80):
+                    db.execute("""DELETE FROM items WHERE playlist_id=?
+                        AND NOT EXISTS (SELECT 1 FROM staging s
+                            WHERE s.playlist_id=items.playlist_id AND s.key=items.key)
+                        AND NOT EXISTS (SELECT 1 FROM favorites f
+                            WHERE f.playlist_id=items.playlist_id AND
+                              (f.key=items.key OR f.key='item:'||items.key))
+                        AND NOT EXISTS (SELECT 1 FROM progress p
+                            WHERE p.playlist_id=items.playlist_id
+                            AND p.key=items.key)""",(playlist_id,))
             db.execute('UPDATE playlists SET updated_at=CURRENT_TIMESTAMP WHERE id=?', (playlist_id,))
             db.commit()
             return total
