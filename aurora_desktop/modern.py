@@ -14,7 +14,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QDialog, QTextBrowser,
-    QPushButton, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu, QGraphicsOpacityEffect, QStyleOptionSlider, QStyle,
+    QPushButton, QProgressBar, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu, QGraphicsOpacityEffect, QStyleOptionSlider, QStyle,
 )
 
 from . import app as legacy
@@ -442,6 +442,15 @@ class MainWindow(legacy.MainWindow):
         self.heading = QLabel("Explorar")
         self.heading.setObjectName("heading")
         heading_row.addWidget(self.heading, 1)
+        # Native indeterminate progress bar, not a fake percent or timer.
+        self.guide_busy = QProgressBar(contents_panel)
+        self.guide_busy.setObjectName("guideBusy")
+        self.guide_busy.setRange(0, 0)
+        self.guide_busy.setTextVisible(False)
+        self.guide_busy.setFixedSize(64, 12)
+        self.guide_busy.setAccessibleName("Atualizando agenda de futebol")
+        self.guide_busy.hide()
+        heading_row.addWidget(self.guide_busy, 0)
         self.football_refresh = QPushButton("Atualizar")
         self.football_refresh.setObjectName("footballRefresh")
         self.football_refresh.setIcon(svg_icon_for("refresh", 22))
@@ -1560,6 +1569,8 @@ class MainWindow(legacy.MainWindow):
         self.selected_category = None
         self.offset = 0
         self.football_refresh.setVisible(self.mode == "football")
+        self.guide_busy.setVisible(self.mode == "football" and bool(
+            getattr(self, "guide_thread", None) and self.guide_thread.isRunning()))
         self.action.setVisible(self.mode not in ("settings", "football"))
         self.second_action.setVisible(self.mode not in ("settings", "football"))
         self.action.setText("Adicionar URL M3U" if self.mode == "settings" or self.playlist_id is None
@@ -1963,6 +1974,7 @@ class MainWindow(legacy.MainWindow):
         self.update_epg_button.setEnabled(False)
         self.football_refresh.setText("Atualizando...")
         self.update_epg_button.setText("Atualizando...")
+        self.guide_busy.setVisible(self.mode == "football")
         self.status.setText("Lendo programação do guia XMLTV...")
         thread.start()
 
@@ -1994,6 +2006,7 @@ class MainWindow(legacy.MainWindow):
         self.guide_worker = None
         self.football_refresh.setEnabled(True)
         self.update_epg_button.setEnabled(True)
+        self.guide_busy.hide()
         self.football_refresh.setText("Atualizar")
         self.update_epg_button.setText("Atualizar agenda de futebol")
 
