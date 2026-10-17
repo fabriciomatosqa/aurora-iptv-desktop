@@ -307,7 +307,7 @@ def fetch_score_updates(rows: list[dict], fetch_json=None, *, request_limit: int
     if not groups:
         return {fixture_key(row): national_artwork(row) for row in rows if national_artwork(row)}
     results: list[dict] = []
-    schedule = sorted(groups, key=lambda key: (key[1] != now.strftime("%Y%m%d"), key[1]))[:max(0, request_limit)]
+    schedule = sorted(groups, key=lambda key: (key[1] != now.strftime("%Y%m%d"), key[1]))[:max(0, min(12, request_limit))]
 
     def download(slug: str, day: str) -> list[dict]:
         url = f"{ESPN}/{slug}/scoreboard?dates={day}&limit=100"
