@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Iterable, Iterator
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 import os
 import re
 import sqlite3
@@ -34,6 +34,26 @@ def data_directory() -> Path:
         return root / 'AURORA IPTV'
     root = Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local' / 'share')))
     return root / 'aurora-iptv'
+
+
+def playlist_account_identity(source: str) -> tuple[str,str,str] | None:
+    """Same-host Xtream HLS/MPEG-TS variants are one library, not two.
+
+    Private authentication values are only compared in memory. Nothing is
+    logged, printed, persisted in new tables or placed in test fixtures.
+    Different hosts (such as a separate SSIPTV proxy) are NOT assumed
+    equivalent without verifying their catalogue.
+    """
+    parsed=urlsplit(source)
+    if parsed.scheme not in ("https","http") or not parsed.hostname:
+        return None
+    if parsed.path.rstrip("/").lower().endswith("/get.php"):
+        args=parse_qs(parsed.query)
+        user=args.get("username",[""])[0]
+        password=args.get("password",[""])[0]
+        if user and password:
+            return parsed.hostname.lower(),user,password
+    return None
 
 
 def content_id(url: str) -> str:
@@ -230,7 +250,13 @@ class Library:
         scheme = urlsplit(source).scheme.lower()
         if scheme not in ('http', 'https', 'file', '') and not Path(source).is_absolute():
             raise ValueError('Use HTTP, HTTPS ou caminho de arquivo local.')
+        identity=playlist_account_identity(source)
         with self.connect() as db:
+            for existing in db.execute("SELECT source FROM playlists"):
+                if (existing["source"]==source or
+                        identity is not None and
+                        playlist_account_identity(existing["source"])==identity):
+                    raise ValueError("Essa biblioteca já foi cadastrada; alterne o formato na playlist existente.")
             cur = db.execute('INSERT INTO playlists (name,source) VALUES (?,?)', (name, source))
             return int(cur.lastrowid)
 
