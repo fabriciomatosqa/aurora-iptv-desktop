@@ -1,0 +1,136 @@
+"""Focused UI, football and synopsis regressions for the next AURORA beta."""
+import os
+os.environ["QT_QPA_PLATFORM"]="offscreen"
+from datetime import datetime,timedelta,timezone
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QListWidgetItem
+
+from aurora_desktop.core import parse_extinf,parse_m3u
+from aurora_desktop.catalog import LibraryV2,competition_group
+from aurora_desktop.modern import MainWindow
+
+
+def test_description_is_preserved_in_m3u_and_database(tmp_path):
+    item='#EXTINF:-1 group-title="Filmes | Terror" description="Sinopse detalhada de teste.",Um Filme'
+    info=parse_extinf(item)
+    assert info["synopsis"]=="Sinopse detalhada de teste."
+    rows=list(parse_m3u([item,"https://example.com/movie/2.mp4"]))
+    assert rows[0].synopsis=="Sinopse detalhada de teste."
+    source=tmp_path/"films.m3u"
+    source.write_text("#EXTM3U\n"+item+"\nhttps://example.com/movie/2.mp4\n")
+    lib=LibraryV2(tmp_path/"db.sqlite")
+    pid=lib.add_playlist("Minha lista",str(source))
+    assert lib.import_playlist(pid)==1
+    movie=lib.browse(pid,"movie",None)[0]
+    assert movie["synopsis"]=="Sinopse detalhada de teste."
+    lib.set_favorite(pid,"item:"+movie["key"],"movie",movie["title"],True)
+    lib.save_progress(pid,movie["key"],41)
+    lib.import_playlist(pid)
+    assert lib.is_favorite(pid,"item:"+movie["key"])
+    assert lib.get_progress(pid,movie["key"])==41
+
+
+def test_football_event_requires_two_teams_and_uses_provided_artwork(tmp_path):
+    path=tmp_path/"source.m3u"
+    path.write_text('#EXTM3U\n#EXTINF:-1 tvg-id="glo" group-title="Ao vivo",Globo\nhttps://example.com/live/1.ts\n')
+    lib=LibraryV2(tmp_path/"f.db")
+    pid=lib.add_playlist("Local",str(path))
+    lib.import_playlist(pid)
+    t=datetime.now(timezone.utc)+timedelta(hours=1)
+    stamp=lambda x:x.strftime("%Y%m%d%H%M%S +0000")
+    xml=tmp_path/"guide.xml"
+    xml.write_text(
+        f'<tv><programme channel="glo" start="{stamp(t)}" stop="{stamp(t+timedelta(hours=2))}">'
+        '<title>Jornal esportivo</title><category>Brasileirão</category></programme>'
+        f'<programme channel="glo" start="{stamp(t)}" stop="{stamp(t+timedelta(hours=2))}">'
+        '<title>Fluminense x Santos</title><category>Campeonato Brasileiro</category>'
+        '<icon src="https://example.com/official/event.png" /></programme></tv>')
+    lib.set_epg_url(pid,str(xml))
+    assert lib.import_football(pid)==1
+    entries=lib.football(pid,"Brasileirão","Santos")
+    assert len(entries)==1
+    assert entries[0]["home_team"]=="Fluminense"
+    assert entries[0]["away_team"]=="Santos"
+    assert entries[0]["event_logo"]=="https://example.com/official/event.png"
+    assert lib.football(pid,"Brasileirão","Flamengo")==[]
+    assert lib.football_categories(pid)==[{"title":"Brasileirão","total":1}]
+    assert competition_group("CONMEBOL Libertadores")=="Libertadores"
+    assert competition_group("Copa do Mundo FIFA")=="FIFA"
+
+
+def test_football_page_without_guide_does_not_list_channels_as_matches(tmp_path,monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA",str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME",str(tmp_path))
+    app=QApplication.instance() or QApplication([])
+    win=MainWindow()
+    source=tmp_path/"sports.m3u"
+    source.write_text('#EXTM3U\n#EXTINF:-1 group-title="Esportes",SporTV\nhttps://example.com/live/one.ts\n')
+    pid=win.library.add_playlist("Esportes",str(source))
+    win.library.import_playlist(pid)
+    win._reload_playlists(pid)
+    win.show()
+    app.processEvents()
+    try:
+        win.navigate("football")
+        app.processEvents()
+        assert win.results.count()==0
+        assert "Nenhuma partida" in win.page.text()
+        assert win.football_refresh.isVisible()
+        assert win.football_refresh.height()<=40
+        assert not win.action.isVisible()
+        assert not win.second_action.isVisible()
+        win.navigate("settings")
+        win.groups.setCurrentRow(3)
+        app.processEvents()
+        assert win.epg_settings.isVisible()
+    finally:
+        win.close()
+
+
+def test_back_from_episodes_returns_to_search_genre_and_scroll(tmp_path,monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA",str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME",str(tmp_path))
+    app=QApplication.instance() or QApplication([])
+    win=MainWindow()
+    source=tmp_path/"shows.m3u"
+    source.write_text('#EXTM3U\n#EXTINF:-1 group-title="Séries | Animação",Série Legal S01E01\nhttps://example.com/series/1.mp4\n')
+    pid=win.library.add_playlist("Programas",str(source))
+    win.library.import_playlist(pid)
+    win._indexed.add(pid)
+    win._reload_playlists(pid)
+    win.show()
+    app.processEvents()
+    try:
+        win.navigate("series")
+        app.processEvents()
+        genre=next(i for i in range(win.groups.count())
+                   if win.groups.item(i).data(Qt.ItemDataRole.UserRole)=="Animação")
+        win.groups.setCurrentRow(genre)
+        win.search.setText("Série")
+        record=win.library.browse(pid,"series","Animação")[0]
+        item=QListWidgetItem(record["title"])
+        item.setData(Qt.ItemDataRole.UserRole,record)
+        win._open(item)
+        assert win.mode=="episodes"
+        win._go_back()
+        app.processEvents()
+        assert win.mode=="series"
+        assert win.selected_category=="Animação"
+        assert win.search.text()=="Série"
+        assert win.previous.isHidden()
+    finally:
+        win.close()
+
+
+def test_synopsis_fallback_and_date_format_are_grounded():
+    label=MainWindow._football_label({
+        "competition":"Brasileirão","home_team":"Fluminense",
+        "away_team":"Santos","start":"2026-10-18T16:00:00-03:00",
+        "channel_title":"Canal do jogo","broadcast":"unknown"})
+    assert "Fluminense  X  Santos" in label
+    assert "Outubro" in label
+    assert "16:00" in label
+    assert "Canal do jogo" in label
+    assert "0 X 0" not in label
+    assert "AO VIVO" not in label
