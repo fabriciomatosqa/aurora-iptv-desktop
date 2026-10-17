@@ -1104,6 +1104,127 @@ class MainWindow(legacy.MainWindow):
             self.fs_seek.setValue(position)
         self.fs_time.setText(legacy.clock(position)+" / "+legacy.clock(self.player.duration()))
 
+    def _is_vod(self):
+        return bool(self.playing and self.playing.get("kind") in ("movie", "series"))
+
+    def _update_seek_buttons(self):
+        # Live channels normally cannot seek. A VOD also needs a seekable
+        # decoder, not just a duration claimed in the guide.
+        allowed = self._is_vod() and self.player.isSeekable() and self.player.duration() > 0
+        for btn in (self.fs_rewind, self.fs_forward):
+            btn.setVisible(self._is_vod())
+            btn.setEnabled(allowed)
+        self.fs_seek.setEnabled(allowed)
+        self.seek.setEnabled(allowed)
+
+    def _seek_relative(self, delta):
+        if not self._is_vod() or not self.player.isSeekable():
+            return
+        dest = max(0, min(self.player.duration(), self.player.position() + delta))
+        self.player.setPosition(dest)
+        self._show_fullscreen_overlay()
+
+    def _set_playback_speed(self, rate):
+        if not self._is_vod():
+            return
+        self.player.setPlaybackRate(rate)
+        actual = self.player.playbackRate()
+        self.fs_speed.setText(f"{actual:g}×")
+        self._show_fullscreen_overlay()
+
+    def _set_video_aspect(self, mode):
+        # Qt Multimedia QVideoWidget supports exactly these three policies.
+        # 4:3, 16:9, 2:1 and 21:9 cropping require a custom video renderer;
+        # presenting unsupported controls would be misleading.
+        if mode not in {m for _, m in self._aspect_modes}:
+            return
+        self._video_aspect_mode = mode
+        self._saved_video_mode = mode
+        self.video.setAspectRatioMode(mode)
+        if self._pip_window is not None:
+            self._pip_window.video.setAspectRatioMode(mode)
+        for action, (_, candidate) in zip(self.fs_aspect_menu.actions(), self._aspect_modes):
+            action.setChecked(mode == candidate)
+        self._show_fullscreen_overlay()
+
+    @staticmethod
+    def _track_name(track, index):
+        try:
+            name = track.stringValue(QMediaMetaData.Key.Title) or ""
+            lang = track.value(QMediaMetaData.Key.Language)
+            return f"{index + 1}. {name or str(lang) if lang is not None else name or 'Faixa'}"
+        except Exception:
+            return f"Faixa {index + 1}"
+
+    def _update_track_buttons(self):
+        try:
+            n_audio = len(self.player.audioTracks())
+            n_sub = len(self.player.subtitleTracks())
+        except Exception:
+            n_audio = n_sub = 0
+        self.fs_audio.setVisible(n_audio > 1)
+        self.fs_subtitles.setVisible(n_sub > 0)
+        self.fs_speed.setVisible(self._is_vod())
+        self._update_seek_buttons()
+
+    def _refresh_audio_menu(self):
+        self.fs_audio_menu.clear()
+        try:
+            tracks = self.player.audioTracks()
+            active = self.player.activeAudioTrack()
+        except Exception:
+            tracks, active = [], -1
+        for index, track in enumerate(tracks):
+            action = self.fs_audio_menu.addAction(self._track_name(track, index))
+            action.setCheckable(True)
+            action.setChecked(index == active)
+            action.triggered.connect(lambda checked=False, i=index: self.player.setActiveAudioTrack(i))
+        if not tracks:
+            self.fs_audio_menu.addAction("Sem faixas de áudio selecionáveis").setEnabled(False)
+
+    def _refresh_subtitle_menu(self):
+        self.fs_subtitles_menu.clear()
+        try:
+            tracks = self.player.subtitleTracks()
+            active = self.player.activeSubtitleTrack()
+        except Exception:
+            tracks, active = [], -1
+        off = self.fs_subtitles_menu.addAction("Desativar legendas")
+        off.setCheckable(True)
+        off.setChecked(active == -1)
+        off.triggered.connect(lambda *_: self.player.setActiveSubtitleTrack(-1))
+        for index, track in enumerate(tracks):
+            action = self.fs_subtitles_menu.addAction(self._track_name(track, index))
+            action.setCheckable(True)
+            action.setChecked(index == active)
+            action.triggered.connect(lambda checked=False, i=index: self.player.setActiveSubtitleTrack(i))
+
+    def _update_loading(self, status):
+        self.fs_loading.setVisible(status in (
+            QMediaPlayer.MediaStatus.LoadingMedia,
+            QMediaPlayer.MediaStatus.BufferingMedia,
+            QMediaPlayer.MediaStatus.StalledMedia))
+        self._update_seek_buttons()
+
+    def _player_key(self, key):
+        if not self.playing:
+            return
+        focus = QApplication.focusWidget()
+        if isinstance(focus, (QLineEdit, QTextBrowser, QComboBox)):
+            return  # Never hijack typing in search, URLs or settings.
+        if key == "F":
+            self._toggle_video_fullscreen()
+        elif key == "M":
+            self._toggle_mute()
+        elif key == "Up":
+            self.volume_slider.setValue(min(100, self.volume_slider.value()+5))
+        elif key == "Down":
+            self.volume_slider.setValue(max(0, self.volume_slider.value()-5))
+        elif key == "Left":
+            self._seek_relative(-10_000)
+        elif key == "Right":
+            self._seek_relative(10_000)
+
     def _toggle_mute(self):
         self.audio.setMuted(not self.audio.isMuted())
         self._sync_volume_icon()
