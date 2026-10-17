@@ -25,6 +25,9 @@ def valid_artwork(value: object) -> str:
     value = value.strip()
     if not value or len(value) > 8192:
         return ""
+    # M3U playlists often publish protocol-relative CDN addresses.
+    if value.startswith("//"):
+        value="https:"+value
     try:
         parsed = urlsplit(value)
         hostname = parsed.hostname
