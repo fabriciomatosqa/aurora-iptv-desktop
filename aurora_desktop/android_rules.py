@@ -42,41 +42,53 @@ def has_episode_marker(name: str) -> bool:
     return any(p.search(name) for p in EPISODE_PATTERNS) or bool(EPISODE_ONLY.search(name))
 
 
-def classify_content(name: str, group: str, url: str, type_hint: str = "") -> str:
-    """Android classification priority, mapped to desktop 'live'/'movie'/'series'."""
+def classify_content(name: str, group: str, url: str,
+                     type_hint: str = "", tvg_id: str = "") -> str:
+    """Conservative, ordered M3U/Xtream classification.
+
+    Never infer 'live' solely because an item is ambiguous. High-confidence
+    fields win over generic genre words, e.g. 'canais de filmes' means TV.
+    """
     hint = normalized(type_hint)
-    if hint in ("live", "tv", "ao vivo", "channel"):
+    if hint in ("live", "tv", "ao vivo", "channel", "linear"):
         return "live"
-    if hint in ("movie", "movies", "filme", "filmes"):
+    if hint in ("movie", "movies", "filme", "filmes", "film"):
         return "movie"
-    if hint in ("series", "serie", "episode", "episodio", "tv show"):
+    if hint in ("series", "serie", "episode", "episodio", "tv show", "show"):
         return "series"
     path = urlsplit(url).path.lower()
     if "/series/" in path or "/episode/" in path:
         return "series"
-    if "/live/" in path:
+    if "/live/" in path or path.startswith("/play/") and (
+            path.endswith("/ts") or path.endswith("/m3u8")):
         return "live"
-    if path.startswith("/play/") and (path.endswith("/ts") or path.endswith("/m3u8")):
-        return "live"
-    title = normalized(name)
-    category = normalized(group)
+    if "/movie/" in path or "/movies/" in path or "/vod/" in path:
+        return "movie"
     if has_episode_marker(name):
         return "series"
-    if category.startswith("canais ") or "ao vivo" in category:
+
+    category = normalized(group)
+    # Provider group labels often contain words for multiple content types.
+    if (category.startswith(("canais ", "canal ", "tv ", "ao vivo", "live "))
+            or category in ("tv", "canais", "live", "televisao")):
         return "live"
-    if any(x in path for x in ("/movie/", "/movies/", "/vod/")):
-        return "movie"
-    if "filmes e series" in category:
-        return "movie" if VOD_FILE.search(url) else "live"
     if SERIES_WORDS.search(category):
-        return "series"
+        if "filmes e series" not in category and "movies and series" not in category:
+            return "series"
     if hint == "vod":
-        return "movie"
+        return "movie" if VOD_FILE.search(url) else "other"
+    if "filmes e series" in category or "movies and series" in category:
+        return "movie" if VOD_FILE.search(url) else "other"
     if MOVIE_WORDS.search(category):
         return "movie"
     if VOD_FILE.search(url):
         return "movie"
-    return "live"
+    # An actual XMLTV channel ID is more reliable than a generic group.
+    if tvg_id.strip():
+        return "live"
+    if path.endswith((".ts", ".m3u8")):
+        return "live"
+    return "other"
 
 
 @dataclass(frozen=True)
