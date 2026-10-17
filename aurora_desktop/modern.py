@@ -1593,7 +1593,7 @@ class MainWindow(legacy.MainWindow):
     def _add_result(self,label,record):
         item = QListWidgetItem(label)
         item.setData(Qt.ItemDataRole.UserRole,record)
-        item.setSizeHint(QSize(0,106))
+        item.setSizeHint(QSize(0,141 if record.get("kind") == "football" else 106))
         item.setToolTip(label.replace("\n", " — "))
         self.results.addItem(item)
         self.covers.enqueue(item,record.get("logo",""),record.get("kind","movie"))
@@ -1655,16 +1655,56 @@ class MainWindow(legacy.MainWindow):
         finally:
             self._loading_items = False
 
+    @staticmethod
+    def _football_label(record):
+        """Friendly but honest fixture card: no fabricated scores or badges."""
+        stamp = record.get("start","")
+        try:
+            dt = datetime.fromisoformat(stamp).astimezone()
+            weekdays = ("Segunda-Feira","Terça-Feira","Quarta-Feira",
+                        "Quinta-Feira","Sexta-Feira","Sábado","Domingo")
+            months = ("Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+                      "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro")
+            date = f"{weekdays[dt.weekday()]} - {dt.day} de {months[dt.month-1]}"
+            time = dt.strftime("%H:%M")
+        except (TypeError, ValueError):
+            dt = None
+            date = "Data indisponível"
+            time = "--:--"
+        league = record.get("competition") or "Competição não informada"
+        home = record.get("home_team") or ""
+        away = record.get("away_team") or ""
+        if not home or not away:
+            from .android_rules import football_details
+            match = football_details(record.get("title",""),league)
+            if match:
+                home, away = match.home,match.away
+        opponents = f"{home}  X  {away}" if home and away else record.get("title","")
+        channel = record.get("channel_title") or "Canal indisponível"
+        broadcast = record.get("broadcast")
+        if broadcast == "replay":
+            signal = "REPRISE"
+        elif broadcast == "live" and dt is not None:
+            try:
+                until = datetime.fromisoformat(record.get("end",""))
+                signal = "AO VIVO · conforme EPG" if dt <= datetime.now().astimezone() < until else ""
+            except (TypeError,ValueError):
+                signal = ""
+        else:
+            signal = ""
+        lines = [league.upper(),opponents,"Transmissão: "+(signal or date),
+                 "Horário: "+time + "    ·    Canal: "+channel]
+        if signal == "REPRISE":
+            lines[2] = "REPRISE  ·  Transmissão: " + date
+        return "\n".join(lines)
+
     def _add_many(self,rows):
         for r in rows:
             title = r.get("title","")
             if self.mode == "football" and r.get("kind") == "football":
-                try:
-                    dt = datetime.fromisoformat(r["start"]).strftime("%d/%m · %H:%M")
-                except (KeyError,ValueError):
-                    dt = "Horário indisponível"
-                status = "  •  REPRISE" if r.get("broadcast") == "replay" else "  •  AO VIVO" if r.get("broadcast") == "live" else ""
-                title = f"{dt}{status}\n{title}\n{r.get('competition','Jogos')} · {r.get('channel_title') or 'Canal sem correspondência'}"
+                title = self._football_label(r)
+                if r.get("event_logo"):
+                    r = {**r, "logo": r["event_logo"]}
             elif r.get("kind") == "football_channel":
                 title = "CANAL ESPORTIVO  ·  " + title
             elif r.get("kind") == "series" and self.mode != "episodes":
