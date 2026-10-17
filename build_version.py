@@ -1,17 +1,32 @@
 """Produce native Windows/Debian version metadata from the *one* app version."""
 from pathlib import Path
+from datetime import datetime
 import re
 from aurora_desktop import __version__
 
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-(beta|rc)\.(\d+))?$")
+DATED_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)-(\d{6})\.(\d{2})$")
 
 
 def native_versions(version: str):
+    dated=DATED_RE.fullmatch(version)
+    if dated:
+        a,b,c,ddmmyy,number=dated.groups()
+        day,month,year=int(ddmmyy[:2]),int(ddmmyy[2:4]),2000+int(ddmmyy[4:])
+        date=datetime(year,month,day)
+        iteration=int(number)
+        if iteration<1:
+            raise ValueError("Sequência diária deve iniciar em 01.")
+        # Windows FILEVERSION component is limited to 16 bits. This field
+        # is build metadata, not the full release-ordering mechanism.
+        revision=date.timetuple().tm_yday*100+iteration
+        # DEB must sort monotonically by ISO date, not displayed DDMMYY.
+        deb=f"{a}.{b}.{c}~date{date:%Y%m%d}.{number}"
+        return (int(a),int(b),int(c),revision),deb
     match = VERSION_RE.fullmatch(version)
     if not match:
-        raise ValueError("Use X.Y.Z, X.Y.Z-beta.N or X.Y.Z-rc.N")
-    a,b,c,label,iteration = match.groups()
-    # Windows fixed version uses a numeric 4th component.
+        raise ValueError("Use X.Y.Z, X.Y.Z-beta.N or X.Y.Z-DDMMAA.NN")
+    a,b,c,label,iteration=match.groups()
     revision = 0 if label is None else (1000 if label=="beta" else 2000)+int(iteration)
     deb = f"{a}.{b}.{c}" + (f"~{label}{iteration}" if label else "")
     return (int(a),int(b),int(c),revision), deb
