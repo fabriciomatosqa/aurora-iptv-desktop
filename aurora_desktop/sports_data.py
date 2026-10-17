@@ -258,6 +258,32 @@ def national_artwork(row: dict) -> dict:
     return {}
 
 
+def parse_team_roster(payload: dict) -> list[dict]:
+    """Read ESPN team roster without guessing club identities."""
+    sports = payload.get("sports") or []
+    leagues = (sports[0].get("leagues") or []) if sports else []
+    roster = (leagues[0].get("teams") or []) if leagues else []
+    result = []
+    for item in roster:
+        team = item.get("team") or {}
+        names = [team.get(k) for k in ("displayName", "shortDisplayName", "name", "nickname", "abbreviation")]
+        names = [n for n in names if isinstance(n, str) and n.strip()]
+        logos = team.get("logos") or []
+        logo = safe_artwork((logos[0].get("href") or "") if logos else team.get("logo", ""))
+        if names and logo:
+            result.append({"names": names, "badge": logo})
+    return result
+
+
+def roster_badge(name: str, roster: list[dict]) -> str:
+    key = team_key(name)
+    if not key:
+        return ""
+    matches = {row["badge"] for row in roster
+               if key in {team_key(alias) for alias in row["names"]} and row["badge"]}
+    return next(iter(matches)) if len(matches) == 1 else ""
+
+
 def fetch_score_updates(rows: list[dict], fetch_json=None, *, request_limit: int = 12) -> dict[str, dict]:
     """Bounded lookup for visible fixtures; failure never breaks the catalogue.
 
@@ -297,12 +323,35 @@ def fetch_score_updates(rows: list[dict], fetch_json=None, *, request_limit: int
                     results.extend(task.result())
                 except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
                     continue
+    # Team logos are often available even when a specific fixture is absent
+    # from the scoreboard. Use the same ESPN teams endpoint as Android.
+    # Keep the combined request ceiling at 12 URLs per refresh.
+    remaining = max(0, 12 - len(schedule))
+    leagues = list(dict.fromkeys(league_slug(row.get("competition", ""))
+                                 for row in rows if league_slug(row.get("competition", ""))))
+    rosters = {}
+    if remaining and leagues:
+        def download_roster(slug):
+            return parse_team_roster(getter(f"{ESPN}/{slug}/teams?limit=100"))
+        with ThreadPoolExecutor(max_workers=min(3, remaining, len(leagues))) as pool:
+            tasks = {pool.submit(download_roster, slug): slug for slug in leagues[:remaining]}
+            for task in as_completed(tasks):
+                try:
+                    rosters[tasks[task]] = task.result()
+                except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+                    continue
     updates = {}
     for row in rows:
         artwork = national_artwork(row)
         score = match_score(row, results)
         if score:
             artwork.update(score)
+        roster = rosters.get(league_slug(row.get("competition", "")), [])
+        if roster:
+            if not artwork.get("home_badge"):
+                artwork["home_badge"] = roster_badge(row.get("home_team", ""), roster)
+            if not artwork.get("away_badge"):
+                artwork["away_badge"] = roster_badge(row.get("away_team", ""), roster)
         if artwork:
             updates[fixture_key(row)] = artwork
     return updates
