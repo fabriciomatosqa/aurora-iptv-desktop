@@ -333,11 +333,33 @@ class Library:
                     WHERE key IN (SELECT incoming_key FROM key_remaps)""")
             if not merge:
                 db.execute('DELETE FROM items WHERE playlist_id=?', (playlist_id,))
-            db.execute('''INSERT OR REPLACE INTO items
+            db.execute('''INSERT INTO items
                     (playlist_id,key,title,url,group_name,kind,logo,series_name,
                      season,episode,tvg_id,type_hint,synopsis,xui_id)
                     SELECT playlist_id,key,title,url,group_name,kind,logo,series_name,
-                           season,episode,tvg_id,type_hint,synopsis,xui_id FROM staging''')
+                           season,episode,tvg_id,type_hint,synopsis,xui_id FROM staging WHERE 1
+                    ON CONFLICT(playlist_id,key) DO UPDATE SET
+                        title=excluded.title,url=excluded.url,
+                        group_name=excluded.group_name,kind=excluded.kind,
+                        logo=COALESCE(NULLIF(excluded.logo,''),items.logo),
+                        series_name=excluded.series_name,
+                        season=excluded.season,episode=excluded.episode,
+                        tvg_id=COALESCE(NULLIF(excluded.tvg_id,''),items.tvg_id),
+                        type_hint=COALESCE(NULLIF(excluded.type_hint,''),items.type_hint),
+                        synopsis=COALESCE(NULLIF(excluded.synopsis,''),items.synopsis),
+                        xui_id=COALESCE(NULLIF(excluded.xui_id,''),items.xui_id)
+                    WHERE items.title IS NOT excluded.title
+                       OR items.url IS NOT excluded.url
+                       OR items.group_name IS NOT excluded.group_name
+                       OR items.kind IS NOT excluded.kind
+                       OR items.series_name IS NOT excluded.series_name
+                       OR items.season IS NOT excluded.season
+                       OR items.episode IS NOT excluded.episode
+                       OR (excluded.logo<>'' AND items.logo IS NOT excluded.logo)
+                       OR (excluded.tvg_id<>'' AND items.tvg_id IS NOT excluded.tvg_id)
+                       OR (excluded.type_hint<>'' AND items.type_hint IS NOT excluded.type_hint)
+                       OR (excluded.synopsis<>'' AND items.synopsis IS NOT excluded.synopsis)
+                       OR (excluded.xui_id<>'' AND items.xui_id IS NOT excluded.xui_id)''')
             # A nearly complete refresh is safe to reconcile. A truncated
             # remote response must never erase a healthy offline library.
             if merge:
