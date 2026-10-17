@@ -187,3 +187,27 @@ def test_colliding_provider_group_name_is_not_forced_to_one_kind(monkeypatch):
     result=get_provider_category_kinds(
         "https://provider.invalid/get.php?username=demo&password=fictional")
     assert "legendadas" not in result
+
+
+def test_sparse_refresh_preserves_original_synopsis_logo_and_user_state(tmp_path):
+    source=tmp_path/"sparse.m3u"
+    lib=LibraryV2(tmp_path/"sparse.db")
+    pid=lib.add_playlist("Home",str(source))
+    source.write_text(
+        '#EXTM3U\\n'
+        '#EXTINF:-1 xui-id="unique-10" group-title="Filmes" '
+        'tvg-logo="https://images.invalid/film.png" '
+        'description="Sinopse preservada",Um filme\\n'
+        'https://cdn.invalid/play/original\\n',encoding="utf-8")
+    lib.import_playlist(pid)
+    original=lib.browse(pid,"movie",None)[0]
+    source.write_text(
+        '#EXTM3U\\n'
+        '#EXTINF:-1 xui-id="unique-10" group-title="Filmes",Um filme\\n'
+        'https://cdn.invalid/play/changed\\n',encoding="utf-8")
+    lib.import_playlist(pid)
+    current=lib.browse(pid,"movie",None)[0]
+    assert current["key"]==original["key"]
+    assert current["url"].endswith("/changed")
+    assert current["logo"]=="https://images.invalid/film.png"
+    assert current["synopsis"]=="Sinopse preservada"
