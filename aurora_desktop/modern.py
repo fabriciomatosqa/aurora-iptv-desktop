@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from . import app as legacy
 from .catalog import LibraryV2, guess_xtream_epg
 from .svg_icons import svg_icon_for
+from .pip_player import PiPWindow
 from .sports_data import fetch_score_updates, fixture_key, national_artwork
 from .football_widgets import BadgeLoader, FootballCardWidget
 
@@ -803,6 +804,11 @@ class MainWindow(legacy.MainWindow):
         self.fullscreen_button.clicked.connect(self._toggle_video_fullscreen)
         self.fullscreen_button.setToolTip("Tela cheia (F11) · sair com Esc")
         actions.addWidget(self.fullscreen_button)
+        self.pip_button = QPushButton("PiP")
+        self.pip_button.setToolTip("Continuar assistindo em uma janela flutuante")
+        self.pip_button.setIcon(svg_icon_for("pip", 20))
+        self.pip_button.clicked.connect(self._toggle_pip)
+        actions.addWidget(self.pip_button)
         self.volume_button=QPushButton()
         self.volume_button.setObjectName("volumeButton")
         self.volume_button.setIcon(svg_icon_for("volume",22))
@@ -836,6 +842,10 @@ class MainWindow(legacy.MainWindow):
         self.fs_top_exit.setIcon(svg_icon_for("exit-fullscreen",20))
         self.fs_top_exit.clicked.connect(self._leave_video_fullscreen)
         top_row.addWidget(self.fs_top_exit)
+        self.fs_pip = QPushButton("Janela flutuante")
+        self.fs_pip.setIcon(svg_icon_for("pip", 20))
+        self.fs_pip.clicked.connect(self._toggle_pip)
+        top_row.addWidget(self.fs_pip)
         hud.addLayout(top_row)
         hud.addStretch(1)
 
@@ -924,6 +934,7 @@ class MainWindow(legacy.MainWindow):
         self.enter_fullscreen_shortcut = QShortcut(QKeySequence("F11"),self,self._toggle_video_fullscreen)
         self.enter_fullscreen_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._video_fullscreen = False
+        self._pip_window = None
         self._fullscreen_was_maximized = False
         self._saved_panel_sizes = None
         self._saved_minimum_size = None
@@ -1036,6 +1047,37 @@ class MainWindow(legacy.MainWindow):
         self.fs_favorite.setEnabled(enabled)
         self.fs_favorite.setText(self.favorite.text() if enabled else "Favoritar")
 
+    def _toggle_pip(self):
+        """Switch the single QMediaPlayer video output to an independent window."""
+        if self._pip_window is not None:
+            self._leave_pip()
+            return
+        if not self.playing:
+            self.status.setText("Selecione um canal, filme ou episódio para usar a janela flutuante.")
+            return
+        if self._video_fullscreen:
+            self._leave_video_fullscreen()
+        pip = PiPWindow(self.player, self.audio, self._toggle_play, self._toggle_mute)
+        pip.restore_requested.connect(self._leave_pip)
+        pip.set_title(self.playing.get("title", "AURORA IPTV"))
+        self._pip_window = pip
+        # QMediaPlayer remains the only player/audio source. Swapping its video
+        # surface can take a frame or two on Linux/Windows, but does not replay
+        # or re-open the stream and never starts a second audio output.
+        self.player.setVideoOutput(pip.video)
+        pip.show()
+        pip.show_controls()
+
+    def _leave_pip(self):
+        pip = self._pip_window
+        if pip is None:
+            return
+        self._pip_window = None  # guard against closeEvent recursion
+        self.player.setVideoOutput(self.video)
+        self.video_stage.setCurrentWidget(self.video)
+        pip.prepare_for_app_exit()
+        pip.deleteLater()
+
     def _toggle_video_fullscreen(self):
         """Fullscreen the SAME media surface, with floating controls over it.
 
@@ -1045,6 +1087,8 @@ class MainWindow(legacy.MainWindow):
         if self._video_fullscreen:
             self._leave_video_fullscreen()
             return
+        if self._pip_window is not None:
+            self._leave_pip()
         self._video_fullscreen=True
         self._fullscreen_was_maximized=self.isMaximized()
         self._saved_panel_sizes=self.panels.sizes()
@@ -1136,6 +1180,8 @@ class MainWindow(legacy.MainWindow):
         self._sync_play_icons()
         self._sync_favorite_controls()
         if item.get("url"):
+            if self._pip_window is not None:
+                self._pip_window.set_title(item.get("title","AURORA IPTV"))
             self.fs_content_label.setText(item.get("title","AURORA IPTV"))
             self.player_back.setVisible(True)
             self.synopsis_button.setVisible(item.get("kind") in ("movie","series"))
@@ -1546,6 +1592,8 @@ class MainWindow(legacy.MainWindow):
         self.second_action.setIcon(svg_icon_for("manage",24,light=not dark))
         self.favorite.setIcon(svg_icon_for("favorites", 22, light=not dark))
         self.fullscreen_button.setIcon(svg_icon_for("fullscreen",20,light=not dark))
+        self.pip_button.setIcon(svg_icon_for("pip",20,light=not dark))
+        self.fs_pip.setIcon(svg_icon_for("pip",20,light=not dark))
         self.fs_top_exit.setIcon(svg_icon_for("exit-fullscreen",20,light=not dark))
         self.fs_exit.setIcon(svg_icon_for("exit-fullscreen",20,light=not dark))
         self.fs_favorite.setIcon(svg_icon_for("favorites",21,light=not dark))
@@ -2241,6 +2289,11 @@ class MainWindow(legacy.MainWindow):
             self.status.setText("Consultando resultados esportivos; encerramento após a consulta.")
             event.ignore()
             return
+        if self._pip_window is not None:
+            self._pip_window.prepare_for_app_exit()
+            self.player.setVideoOutput(self.video)
+            self._pip_window.deleteLater()
+            self._pip_window = None
         self._live_badge_timer.stop()
         self._score_timer.stop()
         super().closeEvent(event)
