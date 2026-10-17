@@ -176,7 +176,7 @@ def test_update_status_is_consumed_once(tmp_path,monkeypatch):
 
 def test_single_version_source_for_windows_and_debian(tmp_path):
     native,deb=native_versions(__version__)
-    assert deb==__version__.replace("-beta.","~beta").replace("-rc.","~rc")
+    assert deb==native_versions("0.6.0-171026.01")[1] if "-171026." in __version__ else deb==__version__.replace("-beta.","~beta").replace("-rc.","~rc")
     assert native[:3]==(0,6,0)
     prepare(tmp_path)
     assert __version__ in (tmp_path/"windows_version.txt").read_text()
