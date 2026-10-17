@@ -278,6 +278,8 @@ class Library:
                 db.executemany('INSERT OR REPLACE INTO staging VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', pending)
             if total == 0:
                 raise ValueError('A lista não contém entradas M3U válidas. Seu catálogo anterior foi preservado.')
+            old_count = db.execute("SELECT COUNT(*) FROM items WHERE playlist_id=?",
+                                   (playlist_id,)).fetchone()[0]
             # M3U output protocols (HLS/MPEG-TS) can change stream URLs
             # without changing the provider's item ID. Preserve the previously
             # stored URL key so favorites and playback progress still resolve.
@@ -314,9 +316,7 @@ class Library:
             # A nearly complete refresh is safe to reconcile. A truncated
             # remote response must never erase a healthy offline library.
             if merge:
-                previous = db.execute("""SELECT COUNT(*) FROM items
-                    WHERE playlist_id=?""",(playlist_id,)).fetchone()[0]
-                if total >= 50 and total * 100 >= previous * 97:
+                if old_count and total >= 50 and total * 100 >= old_count * 97:
                     db.execute("""DELETE FROM items WHERE playlist_id=?
                         AND NOT EXISTS (SELECT 1 FROM staging s
                                         WHERE s.playlist_id=items.playlist_id
