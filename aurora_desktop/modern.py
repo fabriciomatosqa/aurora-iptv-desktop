@@ -882,7 +882,16 @@ class MainWindow(legacy.MainWindow):
         top_row.addWidget(self.fs_pip)
         self.fs_aspect=QPushButton("Proporção")
         self.fs_aspect.setIcon(svg_icon_for("aspect",20))
-        self.fs_aspect.setMenu(self.aspect_menu)
+        self.fs_aspect_menu=QMenu(self.fs_aspect)
+        for label,mode in (
+            ("Ajustar à tela (sem cortes)","fit"),
+            ("Preencher tela (pode cortar)","fill"),
+            ("Esticar (pode distorcer)","stretch"),
+        ):
+            action=self.fs_aspect_menu.addAction(label)
+            action.setCheckable(True)
+            action.triggered.connect(lambda checked=False,m=mode:self._set_aspect_mode(m))
+        self.fs_aspect.setMenu(self.fs_aspect_menu)
         top_row.addWidget(self.fs_aspect)
         hud.addLayout(top_row)
         hud.addStretch(1)
@@ -1106,7 +1115,7 @@ class MainWindow(legacy.MainWindow):
             self._fs_idle.start(3000)
             return
         if any(menu.isVisible() for menu in (
-                self.aspect_menu,self.audio_tracks_menu,self.subtitle_menu,self.speed_menu)):
+                self.aspect_menu,self.fs_aspect_menu,self.audio_tracks_menu,self.subtitle_menu,self.speed_menu)):
             self._fs_idle.start(3000)
             return
         self._fs_fade.stop()
@@ -1214,7 +1223,7 @@ class MainWindow(legacy.MainWindow):
         self.video.setAspectRatioMode(qtmode)
         if self._pip_window is not None:
             self._pip_window.video.setAspectRatioMode(qtmode)
-        for action in self.aspect_menu.actions():
+        for action in self.aspect_menu.actions()+self.fs_aspect_menu.actions():
             action.setChecked(
                 (mode == "fit" and action.text().startswith("Ajustar"))
                 or (mode == "fill" and action.text().startswith("Preencher"))
@@ -1352,6 +1361,7 @@ class MainWindow(legacy.MainWindow):
             self.playing.get("title","AURORA IPTV") if self.playing else "AURORA IPTV")
         self._sync_play_icons()
         self._sync_pip_controls()
+        self._sync_stream_capabilities()
         self._sync_favorite_controls()
         self._sync_volume_icon()
         self.showFullScreen()
