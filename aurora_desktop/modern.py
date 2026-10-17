@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import Qt, QSize, QRectF, QTimer, QUrl, Signal, QObject, QThread
+from PySide6.QtCore import Qt, QSize, QRectF, QPoint, QEvent, QTimer, QUrl, Signal, QObject, QThread, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QBrush, QColor, QFont, QGradient, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QKeySequence, QShortcut
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
@@ -14,7 +14,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
-    QPushButton, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu,
+    QPushButton, QSlider, QSplitter, QStackedWidget, QVBoxLayout, QWidget, QMenu, QGraphicsOpacityEffect, QStyleOptionSlider, QStyle,
 )
 
 from . import app as legacy
@@ -30,6 +30,55 @@ def asset(name: str) -> Path:
     return root / "assets" / name
 
 
+class AuroraGradientTitle(QLabel):
+    """Crisp custom gradient lettering inspired by AURORA Utils."""
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setObjectName("heroTitle")
+        self.setMinimumHeight(55)
+        self.setMinimumWidth(310)
+
+    def paintEvent(self, event):
+        painter=QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        font=QFont("Segoe UI", 30, QFont.Weight.Bold)
+        font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 3.2)
+        painter.setFont(font)
+        rect=QRectF(2,0,self.width()-3,self.height())
+        painter.setPen(QColor(5,15,29,155))
+        painter.drawText(rect.translated(1.8,2), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.text())
+        gradient=QLinearGradient(0,0,max(350,self.width()*.8),0)
+        gradient.setColorAt(0,QColor("#ffffff"))
+        gradient.setColorAt(.28,QColor("#e7fbff"))
+        gradient.setColorAt(.58,QColor("#60ebdf"))
+        gradient.setColorAt(.82,QColor("#8e9fff"))
+        gradient.setColorAt(1,QColor("#d38bf1"))
+        painter.setPen(QPen(QBrush(gradient),1))
+        painter.drawText(rect,Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,self.text())
+        painter.end()
+
+
+class AuroraSeekSlider(QSlider):
+    """Use the small four-point aurora star as playback-position thumb."""
+    def __init__(self,orientation,parent=None):
+        super().__init__(orientation,parent)
+        self.setObjectName("auroraSeek")
+        self.setMinimumHeight(26)
+
+    def paintEvent(self,event):
+        super().paintEvent(event)
+        style=QStyleOptionSlider()
+        self.initStyleOption(style)
+        region=self.style().subControlRect(
+            QStyle.ComplexControl.CC_Slider,style,
+            QStyle.SubControl.SC_SliderHandle,self)
+        painter=QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        spark=icon_for("sparkle",21).pixmap(QSize(21,21))
+        painter.drawPixmap(region.center()-QPoint(10,10),spark)
+        painter.end()
+
+
 class AuroraBanner(QFrame):
     """A full-width, image-backed hero instead of an isolated picture tile.
 
@@ -40,35 +89,51 @@ class AuroraBanner(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("auroraHero")
-        self.setMinimumHeight(156)
-        self.setMaximumHeight(182)
+        self.setMinimumHeight(198)
+        self.setMaximumHeight(240)
         self._image = QPixmap(str(asset("aurora_banner.jpg")))
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(29, 17, 26, 18)
-        layout.setSpacing(5)
-
-        overline = QHBoxLayout()
-        overline.setSpacing(9)
-        badge = QLabel("✦  AURORA EXPERIENCE")
-        badge.setObjectName("heroBadge")
-        overline.addWidget(badge, 0, Qt.AlignmentFlag.AlignLeft)
-        overline.addStretch(1)
+        layout=QVBoxLayout(self)
+        layout.setContentsMargins(45,17,42,20)
+        layout.setSpacing(7)
+        top=QHBoxLayout()
+        mark=QLabel("✦  AURORA EXPERIENCE")
+        mark.setObjectName("heroBadge")
+        top.addWidget(mark,0,Qt.AlignmentFlag.AlignLeft)
+        top.addStretch(1)
         from . import __version__
-        version = QLabel(f"DESKTOP  /  v{__version__}")
+        version=QLabel(f"DESKTOP  /  v{__version__}")
         version.setObjectName("heroVersion")
-        overline.addWidget(version, 0, Qt.AlignmentFlag.AlignRight)
-        layout.addLayout(overline)
+        top.addWidget(version,0,Qt.AlignmentFlag.AlignRight)
+        layout.addLayout(top)
         layout.addStretch(1)
 
-        title = QLabel("AURORA  /  IPTV")
-        title.setObjectName("heroTitle")
-        layout.addWidget(title)
-        subtitle = QLabel("SEU UNIVERSO DE ENTRETENIMENTO")
+        brand=QHBoxLayout()
+        brand.setSpacing(22)
+        brand_logo=QLabel()
+        brand_logo.setObjectName("heroLogo")
+        logo=QPixmap(str(asset("aurora_icon.png")))
+        if not logo.isNull():
+            brand_logo.setPixmap(logo.scaled(
+                106,106,Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation))
+        brand_logo.setFixedSize(110,110)
+        brand.addWidget(brand_logo)
+        text_column=QVBoxLayout()
+        text_column.setSpacing(0)
+        self.gradient_title=AuroraGradientTitle("AURORA IPTV")
+        text_column.addWidget(self.gradient_title)
+        subtitle=QLabel("SEU UNIVERSO DE ENTRETENIMENTO")
         subtitle.setObjectName("heroSubtitle")
-        layout.addWidget(subtitle)
-        footnote = QLabel("CANAIS AO VIVO    ·    FILMES    ·    SÉRIES    ·    FUTEBOL")
+        text_column.addWidget(subtitle)
+        footnote=QLabel("CANAIS AO VIVO   ·   FILMES   ·   SÉRIES   ·   FUTEBOL")
         footnote.setObjectName("heroFootnote")
-        layout.addWidget(footnote)
+        text_column.addWidget(footnote)
+        brand.addLayout(text_column,1)
+        quote=QLabel("Sua tela.\nSeu universo.")
+        quote.setObjectName("heroQuote")
+        quote.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        brand.addWidget(quote,0,Qt.AlignmentFlag.AlignVCenter)
+        layout.addLayout(brand)
         layout.addStretch(1)
 
     def paintEvent(self, event):
@@ -294,9 +359,22 @@ class MainWindow(legacy.MainWindow):
         root = QWidget(self)
         root.setObjectName("appRoot")
         self.setCentralWidget(root)
-        base = QHBoxLayout(root)
+        self.page_layout = QVBoxLayout(root)
+        self.page_layout.setSpacing(0)
+        self.page_layout.setContentsMargins(0,0,0,0)
+        self.header_widget = QWidget(root)
+        self.header_widget.setObjectName("mainHeader")
+        upper = QHBoxLayout(self.header_widget)
+        upper.setContentsMargins(8,8,8,0)
+        upper.setSpacing(0)
+        self.banner = AuroraBanner(self.header_widget)
+        upper.addWidget(self.banner,1)
+        self.page_layout.addWidget(self.header_widget)
+        content_row = QWidget(root)
+        base = QHBoxLayout(content_row)
         base.setSpacing(0)
         base.setContentsMargins(0,0,0,0)
+        self.page_layout.addWidget(content_row,1)
 
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
@@ -304,23 +382,7 @@ class MainWindow(legacy.MainWindow):
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(18,22,18,20)
         side.setSpacing(10)
-        logo = QLabel()
-        icon = QPixmap(str(asset("aurora_icon.png")))
-        if not icon.isNull():
-            logo.setPixmap(icon.scaled(78,78,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
-        else:
-            logo.setText("✦")
-            logo.setStyleSheet("font-size:40px;color:#77f4d6;")
-        logo.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        side.addWidget(logo)
-        brand = QLabel("AURORA IPTV")
-        brand.setObjectName("brand")
-        side.addWidget(brand)
-        from . import __version__
-        version = QLabel(f"DESKTOP  ·  v{__version__}")
-        version.setObjectName("versionTag")
-        side.addWidget(version)
-        side.addSpacing(18)
+        side.addSpacing(8)
         self.nav = {}
         for mode,title in [
             ("home","Início"),("live","Ao vivo"),("movie","Filmes"),
@@ -351,15 +413,6 @@ class MainWindow(legacy.MainWindow):
         outer.setContentsMargins(16,15,16,15)
         outer.setSpacing(14)
         self.outer_layout = outer
-        self.header_widget = QWidget(shell)
-        self.header_widget.setObjectName("mainHeader")
-        upper = QHBoxLayout(self.header_widget)
-        upper.setContentsMargins(0,0,0,0)
-        upper.setSpacing(0)
-        self.banner = AuroraBanner(self.header_widget)
-        upper.addWidget(self.banner, 1)
-        outer.addWidget(self.header_widget)
-
         panels = QSplitter(Qt.Orientation.Horizontal)
         self.panels = panels
         panels.setChildrenCollapsible(False)
