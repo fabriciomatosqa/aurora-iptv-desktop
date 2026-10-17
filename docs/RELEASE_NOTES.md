@@ -11,6 +11,12 @@ que só reconheciam tags `beta.N`. No Linux, o pacote de atualização tem
 o nome `aurora-iptv_0.6.0-date20261017.01_amd64.deb`: a data ISO no
 pacote é necessária para garantir a ordem das versões no sistema Debian.
 
+As tags são definidas antes de gerar os instaladores, para que interface,
+metadados Windows, pacote Debian e GitHub Release exibam a mesma publicação.
+O próximo lançamento de 17/10/2026 será `.02`; o primeiro de 18/10/2026
+será `v0.6.0-181026.01`.
+
+
 ## Banner ultrawide
 - O banner não usa mais crop indiscriminado para cobrir monitores largos. Preserva a imagem ao centro e reflete suas laterais quando há espaço extra, sem mudar sua proporção.
 - Mantém toda a largura preenchida, logotipo e textos legíveis, com desenho direto em QPainter.
