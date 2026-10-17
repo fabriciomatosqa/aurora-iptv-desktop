@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from .sports_data import safe_artwork
+from .sports_data import safe_artwork, safe_epg_artwork
 from .svg_icons import svg_icon_for
 
 
@@ -25,8 +25,8 @@ class BadgeLoader:
         self.active = 0
         self.failed = set()
 
-    def attach(self, label: QLabel, url: str):
-        url = safe_artwork(url)
+    def attach(self, label: QLabel, url: str, *, allow_epg: bool = False):
+        url = safe_artwork(url) or (safe_epg_artwork(url) if allow_epg else "")
         if not url:
             return
         if url in self.cache:
@@ -159,7 +159,8 @@ class FootballCardWidget(QFrame):
         self.apply_theme(dark)
 
     def _set_icon(self, label: QLabel, url: str, key: str):
-        url = safe_artwork(url)
+        allow_epg = key == "league" and bool(url) and url == self.row.get("event_logo")
+        url = safe_artwork(url) or (safe_epg_artwork(url) if allow_epg else "")
         if self._badge_urls.get(key) == url:
             return
         self._badge_urls[key] = url
@@ -167,7 +168,7 @@ class FootballCardWidget(QFrame):
         label.setPixmap(svg_icon_for("football" if key != "league" else "live",
                                       min(label.width(), 30), light=not self.dark).pixmap(
                                           QSize(min(label.width(),30), min(label.height(),30))))
-        self.loader.attach(label, url)
+        self.loader.attach(label, url, allow_epg=allow_epg)
 
     def apply_theme(self, dark: bool):
         self.dark = dark
