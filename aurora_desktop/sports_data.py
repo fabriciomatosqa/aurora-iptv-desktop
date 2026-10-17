@@ -53,8 +53,14 @@ LEAGUES = (
     (("champions league", "liga dos campeoes"), "uefa.champions"),
     (("europa league", "liga europa"), "uefa.europa"),
     (("conference league",), "uefa.europa.conf"),
-    (("copa do mundo", "world cup", "fifa"), "fifa.world"),
-    (("amistoso internacional", "international friendly"), "fifa.friendly"),
+    (("copa do mundo feminina", "women s world cup"), "fifa.wwc"),
+    (("copa do mundo", "world cup", "fifa world"), "fifa.world"),
+    (("copa america feminina",), "conmebol.america.femenina"),
+    (("copa america",), "conmebol.america"),
+    (("eurocopa feminina",), "uefa.weuro"),
+    (("eurocopa", "european championship"), "uefa.euro"),
+    (("amistoso internacional feminino",), "fifa.friendly.w"),
+    (("amistoso internacional", "international friendly", "amistosos de selecoes"), "fifa.friendly"),
     (("eliminatorias conmebol", "eliminatorias sul americanas"), "fifa.worldq.conmebol"),
     (("eliminatorias uefa",), "fifa.worldq.uefa"),
 )
@@ -92,7 +98,12 @@ def team_key(name: str) -> str:
             n = n[:-len(suffix)]
             break
     aliases = {"flamengo rj": "flamengo", "cr flamengo": "flamengo",
-               "fluminense rj": "fluminense", "real madrid cf": "real madrid",
+               "do flamengo": "flamengo",
+               "fluminense rj": "fluminense", "fluminense football club": "fluminense",
+               "real madrid cf": "real madrid",
+               "sport club corinthians paulista": "corinthians",
+               "sport club internacional": "internacional",
+               "gremio foot ball porto alegrense": "gremio",
                "manchester utd": "manchester united"}
     return re.sub(r"[^a-z0-9]", "", aliases.get(n, n))
 
