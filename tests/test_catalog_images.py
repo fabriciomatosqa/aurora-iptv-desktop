@@ -39,6 +39,7 @@ def test_picker_reuses_series_poster_and_does_not_guess():
     assert pick_best_art({"kind":"movie","cover":"https://cdn.test/movie.jpg"})=="https://cdn.test/movie.jpg"
     assert pick_best_art({"kind":"live","logo":"https://cdn.test/channel.png"})=="https://cdn.test/channel.png"
     assert pick_best_art({"kind":"movie","poster":"not-an-image-url"})==""
+    assert pick_best_art({"kind":"live","tvg-logo":"//cdn.example/stream.png"})=="https://cdn.example/stream.png"
     key=image_cache_file(Path("/tmp"),"https://server.example/logo.png?token=private")
     assert key.suffix==".img" and "private" not in str(key)
 
