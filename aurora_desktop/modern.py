@@ -163,7 +163,8 @@ class AuroraBanner(QFrame):
             focal_aspect = max(aspect, 5.7)
             natural_width = min(float(w), h * focal_aspect)
             left = (w - natural_width) / 2
-            crop_height = min(float(ih), iw / focal_aspect)
+            actual_aspect = natural_width / h
+            crop_height = min(float(ih), iw / actual_aspect)
             top_crop = (ih - crop_height) * .48
             focal_source = QRectF(0, top_crop, iw, crop_height)
             full_art = QRectF(left, 0, natural_width, h)
