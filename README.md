@@ -1,4 +1,4 @@
-# AURORA IPTV — Desktop 0.6.0-beta.14
+# AURORA IPTV — Desktop 0.6.0-beta.15
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
 
@@ -11,6 +11,14 @@ Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Reposit�
 - Ampliação dos testes automáticos em Windows e Linux.
 
 **Ainda pendente:** placares/minutos em tempo real e escudos oficiais. Uma integração confiável e com direitos de uso adequados será necessária; não há dados esportivos fictícios.
+
+## v0.6.0-beta.15 — banner panorâmico, player avançado, PiP e catalogação
+
+- **Banner:** imagem principal inteira com extensão lateral refletida para ultrawide, sem zoom excessivo.
+- **Player:** HUD em tela cheia com botões SVG centrais, 3–5 s de visibilidade, áudio/legendas disponíveis, proporção ajustar/preencher/esticar, velocidade de VOD e atalhos.
+- **PiP:** janela independente redimensionável (Windows e Linux), um só player e áudio, retorno sem reiniciar a URL; modo sempre no topo quando o compositor permitir.
+- **Catálogo:** classificação por metadados e caminho, seção interna para itens incertos, correção manual por item persistida e reclassificação incremental sem duplicações.
+- Limites de proporções fixas e de sistemas gráficos estão registrados em [notas desta versão](docs/RELEASE_NOTES.md).
 
 ## v0.6.0-beta.14 — fontes esportivas aproveitadas do Android
 

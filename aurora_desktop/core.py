@@ -17,6 +17,7 @@ import sys
 import requests
 
 from .android_rules import classify_content, series_identity
+from .artwork import pick_best_art
 
 ATTR = re.compile(r'([\w-]+)\s*=\s*"([^"]*)"')
 ATTR_ANY = re.compile(r"""([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
@@ -74,7 +75,8 @@ def parse_extinf(line: str) -> dict[str, str]:
     return {
         "title": title or "Sem título",
         "group": attrs.get("group-title", ""),
-        "logo": attrs.get("tvg-logo", ""),
+        "logo": pick_best_art(attrs),
+        "artwork_fields": attrs,
         "tvg_id": attrs.get("tvg-id", ""),
         "type_hint": next((attrs[k] for k in ("media-type","tvg-type","content-type","type") if attrs.get(k)), ""),
         "synopsis": next((attrs[k] for k in ("tvg-description","description","synopsis","plot","summary","tvg-desc","desc")
@@ -129,7 +131,11 @@ def parse_m3u(lines: Iterable[str]) -> Iterator[Entry]:
         name = info['title']
         typ = kind_of(info['group'], name, url, info.get('type_hint', ''))
         series, season, episode = episode_info(name) if typ == 'series' else ('', None, None)
-        yield Entry(content_id(url), name, url, info['group'], typ, info['logo'], series, season, episode,
+        # Give films/series their actual cover priority while channels keep
+        # the broadcaster logo. This field is persisted in the existing logo
+        # column, so no database migration is required.
+        artwork = pick_best_art({**info.get("artwork_fields", {}), "kind":typ}) or info["logo"]
+        yield Entry(content_id(url), name, url, info['group'], typ, artwork, series, season, episode,
                     info['tvg_id'], info.get('type_hint', ''), info.get('synopsis', ''))
         info = None
 

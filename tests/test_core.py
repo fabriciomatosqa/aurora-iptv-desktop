@@ -64,11 +64,11 @@ def test_failed_import_preserves_old_catalog(tmp_path):
     lib.import_playlist(pid)
     source.write_text('#EXTM3U\n#EXTINF:-1,Dead\nhttps://example.org/a\n#EXTINF:-1,Dead\nhttps://example.org/a\n', encoding='utf-8')
     assert lib.import_playlist(pid) == 2
-    assert len(lib.items(pid, 'live')) == 1
+    assert len(lib.items(pid, 'uncategorized')) == 1  # anonymous stream: no TV evidence
     source.write_text('not a playlist', encoding='utf-8')
     with pytest.raises(ValueError):
         lib.import_playlist(pid)
-    assert len(lib.items(pid, 'live')) == 1
+    assert len(lib.items(pid, 'uncategorized')) == 1
 
 
 def test_search_pagination(tmp_path):

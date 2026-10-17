@@ -34,6 +34,12 @@ PATHS = {
     "fullscreen": '<path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/>',
     "exit-fullscreen": '<path d="M3 9h6V3m6 0v6h6M9 21v-6H3m18 0h-6v6"/>',
     "sparkle": '<path d="m12 2 2.7 7.3L22 12l-7.3 2.7L12 22l-2.7-7.3L2 12l7.3-2.7z" fill="{aqua}" stroke="{aqua}"/><path d="m19 1 .6 1.5L21 3l-1.4.5L19 5l-.6-1.5L17 3l1.4-.5z" fill="{gold}"/>',
+    "close": '<path d="M5 5 19 19M19 5 5 19"/>',
+    "pip": '<rect x="2" y="4" width="20" height="16" rx="2.5"/><rect x="11" y="11" width="9" height="7" rx="1" fill="{panel}"/><path d="M4.5 7h9"/>',
+    "aspect": '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M5 10V8h4M19 14v2h-4"/>',
+    "rewind": '<path d="m11 5-8 7 8 7z" fill="{aqua}"/><path d="m21 5-8 7 8 7z" fill="{aqua}"/>',
+    "forward": '<path d="m3 5 8 7-8 7z" fill="{aqua}"/><path d="m13 5 8 7-8 7z" fill="{aqua}"/>',
+    "subtitle": '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M5 12h5m-5 4h14m-6-4h6"/>',
     "update": '<path d="M12 3v12m-4-4 4 4 4-4"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
 }
 
