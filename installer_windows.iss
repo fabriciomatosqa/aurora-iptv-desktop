@@ -1,6 +1,6 @@
 #define MyAppName "AURORA IPTV"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.6.0-beta.13"
+  #define MyAppVersion "0.6.0-171026.01"
 #endif
 #define MyAppExeName "AURORA-IPTV.exe"
 [Setup]
