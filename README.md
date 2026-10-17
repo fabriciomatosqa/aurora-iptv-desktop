@@ -1,4 +1,4 @@
-# AURORA IPTV — Desktop 0.6.0-171026.01
+# AURORA IPTV — Desktop 0.6.0-171026.03
 
 Player IPTV para **Windows e Linux** em PySide6/Qt Multimedia e SQLite. Repositório independente do [AURORA IPTV Android](https://github.com/fabriciomatosqa/iptv-player). **Nenhum conteúdo, playlist ou credencial incluídos.**
 
