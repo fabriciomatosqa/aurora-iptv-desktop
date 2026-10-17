@@ -964,6 +964,21 @@ class MainWindow(legacy.MainWindow):
             button.setIcon(icon_for(name, 24, light=not dark))
         self.favorite.setIcon(icon_for("favorites", 22, light=not dark))
 
+    def _on_playlist(self):
+        # Selecting a playlist in Configurações should not unexpectedly
+        # throw the user out of the page. Keep the prior import/progress
+        # behavior and update the visible library in place.
+        self._save_progress()
+        self.playlist_id = self.playlists.currentData()
+        if self.mode == "settings":
+            selected = self.playlists.currentText()
+            self.status.setText(
+                f"Playlist ativa: {selected}" if selected else
+                "Nenhuma playlist ativa. Adicione uma lista para começar.")
+            self._refresh()
+        else:
+            self.navigate("home")
+
     def navigate(self, mode):
         self.mode = mode
         if mode != "episodes":
