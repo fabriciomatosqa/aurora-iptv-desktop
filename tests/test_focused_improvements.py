@@ -45,7 +45,7 @@ def test_football_event_requires_two_teams_and_uses_provided_artwork(tmp_path):
         '<title>Jornal esportivo</title><category>Brasileirão</category></programme>'
         f'<programme channel="glo" start="{stamp(t)}" stop="{stamp(t+timedelta(hours=2))}">'
         '<title>Fluminense x Santos</title><category>Campeonato Brasileiro</category>'
-        '<icon src="https://example.com/official/event.png" /></programme></tv>')
+        '<icon src="https://example.com/official/event.png" /></programme></tv>',encoding="utf-8")
     lib.set_epg_url(pid,str(xml))
     assert lib.import_football(pid)==1
     entries=lib.football(pid,"Brasileirão","Santos")
@@ -94,7 +94,7 @@ def test_back_from_episodes_returns_to_search_genre_and_scroll(tmp_path,monkeypa
     app=QApplication.instance() or QApplication([])
     win=MainWindow()
     source=tmp_path/"shows.m3u"
-    source.write_text('#EXTM3U\n#EXTINF:-1 group-title="Séries | Animação",Série Legal S01E01\nhttps://example.com/series/1.mp4\n')
+    source.write_text('#EXTM3U\n#EXTINF:-1 group-title="Séries | Animação",Série Legal S01E01\nhttps://example.com/series/1.mp4\n',encoding="utf-8")
     pid=win.library.add_playlist("Programas",str(source))
     win.library.import_playlist(pid)
     win._indexed.add(pid)
@@ -130,7 +130,8 @@ def test_synopsis_fallback_and_date_format_are_grounded():
         "channel_title":"Canal do jogo","broadcast":"unknown"})
     assert "Fluminense  X  Santos" in label
     assert "Outubro" in label
-    assert "16:00" in label
+    expected=datetime.fromisoformat("2026-10-18T16:00:00-03:00").astimezone().strftime("%H:%M")
+    assert expected in label
     assert "Canal do jogo" in label
     assert "0 X 0" not in label
     assert "AO VIVO" not in label
