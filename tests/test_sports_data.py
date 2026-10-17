@@ -5,7 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 from aurora_desktop.sports_data import (
     FIFA_BADGE, country_key, fetch_score_updates, fixture_key, league_slug,
-    match_score, national_artwork, parse_scoreboard, safe_artwork, team_key,
+    match_score, national_artwork, parse_scoreboard, parse_team_roster, roster_badge,
+    safe_artwork, team_key,
 )
 
 
@@ -114,3 +115,29 @@ def test_national_images_fallback_when_provider_unreachable():
                   competition="Copa do Mundo FIFA")
     found = fetch_score_updates([row], fetch_json=lambda url: (_ for _ in ()).throw(OSError("offline")))
     assert found[fixture_key(row)]["home_badge"].startswith("https://r2.thesportsdb.com/")
+
+
+def test_espn_team_roster_fills_logos_even_without_score():
+    now = datetime.now(timezone.utc)
+    fixture_row = fixture(now)
+    payload = {"sports":[{"leagues":[{"teams":[
+        {"team":{"displayName":"Fluminense FC","name":"Fluminense",
+                 "logos":[{"href":"https://a.espncdn.com/i/teamlogos/soccer/500/123.png"}]}},
+        {"team":{"displayName":"Santos FC","name":"Santos",
+                 "logos":[{"href":"https://a.espncdn.com/i/teamlogos/soccer/500/456.png"}]}}
+    ]}]}]}
+    roster = parse_team_roster(payload)
+    assert len(roster) == 2
+    assert roster_badge("Fluminense", roster).endswith("/123.png")
+    assert roster_badge("Santos", roster).endswith("/456.png")
+    assert roster_badge("Flamengo", roster) == ""
+
+    urls = []
+    def mock_request(url):
+        urls.append(url)
+        return payload if url.endswith("/teams?limit=100") else {"events":[]}
+    result = fetch_score_updates([fixture_row],fetch_json=mock_request)
+    assert result[fixture_key(fixture_row)]["home_badge"].endswith("/123.png")
+    assert result[fixture_key(fixture_row)]["away_badge"].endswith("/456.png")
+    assert any("/teams?limit=100" in u for u in urls)
+    assert len(urls) <= 12
