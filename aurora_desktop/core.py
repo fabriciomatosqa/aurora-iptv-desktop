@@ -73,7 +73,7 @@ def parse_extinf(line: str) -> dict[str, str]:
     finds the delimiter outside quotes and after the final metadata attribute.
     """
     attrs_matches = list(ATTR_ANY.finditer(line))
-    attrs = {m.group(1).lower(): (m.group(2) or m.group(3)) for m in attrs_matches}
+    attrs = {m.group(1).lower(): (m.group(2) if m.group(2) is not None else (m.group(3) or "")) for m in attrs_matches}
     last_attr_end = max((m.end() for m in attrs_matches), default=0)
     commas = []
     quoted = None
