@@ -56,7 +56,7 @@ def test_windows_absolute_image_paths_before_url_parsing():
     assert valid_artwork("relative/path/poster.png")==""
     assert valid_artwork("c:relative-path.png")==""
     assert valid_artwork("https://example.com/poster.png")=="https://example.com/poster.png"
-    assert valid_artwork("/tmp/poster.png")=="/tmp/poster.png"
+    assert valid_artwork("/tmp/poster.png")==("/tmp/poster.png" if os.name == "posix" else "")
 
 def test_stream_id_matches_only_explicit_xtream_paths():
     assert xtream_stream_id("https://provider.test/live/user/pass/123.ts","live")=="123"
