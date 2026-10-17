@@ -5,7 +5,7 @@ antialiased rendering across the supported Qt/Windows/Linux backends.
 """
 from __future__ import annotations
 from functools import lru_cache
-from PySide6.QtCore import QByteArray, Qt
+from PySide6.QtCore import QByteArray, QRectF, Qt
 from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
@@ -18,7 +18,7 @@ PATHS = {
     "series": '<rect x="2.5" y="6" width="15.5" height="15" rx="2.3"/><rect x="6.2" y="2.5" width="15.2" height="15.2" rx="2.3" fill="{panel}"/><path d="m12 7.5 5.4 3.1-5.4 3.1z" fill="{aqua}" stroke="{aqua}" stroke-width=".6"/>',
     "football": '<circle cx="12" cy="12" r="9.5"/><path d="m12 7-4.5 3.4 1.7 5.2h5.6l1.7-5.2z" fill="{aqua}" fill-opacity=".35"/><path d="m12 7-1.4-4.2m5.9 7.6 4.1-1.6m-5.8 6.8 2.2 4.1m-7.8-4.1-2.2 4.1m.5-9.3-4.1-1.6"/>',
     "favorites": '<path d="m12 2.4 3 6.2 6.8 1-4.9 4.8 1.1 6.8-6-3.2-6 3.2 1.1-6.8L2.2 9.6l6.8-1z" fill="{gold}" stroke="{gold}" stroke-width="1.4"/>',
-    "settings": '<path d="M10 2h4l.7 2.7 2.1.9 2.5-1.3 2.8 2.8-1.4 2.5.9 2.1 2.4.7v4l-2.4.7-.9 2.1 1.4 2.5-2.8 2.8-2.5-1.3-2.1.9L14 24h-4l-.7-2.7-2.1-.9-2.5 1.3-2.8-2.8 1.4-2.5-.9-2.1L0 13.6v-4l2.4-.7.9-2.1L1.9 4.3 4.7 1.5l2.5 1.3 2.1-.9z" transform="translate(1.1 .4) scale(.89)"/><circle cx="12" cy="12" r="3.3"/>',
+    "settings": '<path d="M10 2h4l.65 2.3 1.9.8 2.1-1.2 2.65 2.65-1.2 2.1.8 1.9L22.2 11v3l-2.3.65-.8 1.9 1.2 2.1-2.65 2.65-2.1-1.2-1.9.8L14 22.2h-4l-.65-2.3-1.9-.8-2.1 1.2-2.65-2.65 1.2-2.1-.8-1.9L.8 14v-3l2.3-.65.8-1.9-1.2-2.1 2.65-2.65 2.1 1.2 1.9-.8z" transform="translate(.5 .5) scale(.96)"/><circle cx="12" cy="12" r="3.2"/>',
     "back": '<path d="m14.5 5-7 7 7 7"/><path d="M8 12h13"/>',
     "refresh": '<path d="M20.5 7.8A9 9 0 0 0 5.2 5.4L3 8"/><path d="M3 3.4V8h4.7"/><path d="M3.5 16.2A9 9 0 0 0 18.8 18.6L21 16"/><path d="M21 20.6V16h-4.7"/>',
     "add": '<path d="M12 4v16M4 12h16"/><circle cx="12" cy="12" r="9"/>',
@@ -49,6 +49,9 @@ def svg_icon_for(name: str, size: int = 26, light: bool = False) -> QIcon:
     pixmap.setDevicePixelRatio(scale)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
-    renderer.render(painter)
+    # CRITICAL: explicit *logical-size* viewport. Without it, on HiDPI
+    # renderers QtSvg draws just a physical 24x24 fragment into a 90x90
+    # pixmap, causing chopped symbols (the beta.12 regression).
+    renderer.render(painter, QRectF(0, 0, size, size))
     painter.end()
     return QIcon(pixmap)
