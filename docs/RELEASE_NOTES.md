@@ -1,3 +1,23 @@
+# AURORA IPTV Desktop v0.6.0-011126.01
+
+## Desempenho da reconciliação de catálogos
+
+- Corrige o uso do índice de identidade do provedor na sincronização SQLite.
+- Adiciona índices temporários para evitar buscas repetidas e um índice de
+  playlist para classificar lotes sem ordenar novamente o catálogo inteiro.
+- Preserva as regras de identidade, favoritos, progresso e rollback em falhas.
+- Em um teste sintético de 10 mil itens, a atualização idêntica caiu de
+  31,14 s para 1,00 s. O resultado depende do catálogo e do equipamento.
+- Testes de regressão incluem dois episódios novos, troca de URLs,
+  preservação de dados e leitura do catálogo durante uma importação.
+
+Esta é uma melhoria parcial. Catálogos gigantes ainda exigem leitura e
+classificação completas quando atualizados; não promete atualização instantânea
+nem resolve os bloqueios de inicialização das três plataformas. Resultados e
+limitações em `docs/catalog-performance-investigation.md`.
+
+## Histórico
+
 # AURORA IPTV Desktop v0.6.0-171026.03
 
 ## Classificação e atualização de catálogos (Windows/Linux)

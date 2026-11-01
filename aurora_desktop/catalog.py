@@ -231,6 +231,9 @@ class LibraryV2(Library):
             db.executescript("""
                 CREATE INDEX IF NOT EXISTS idx_items_category ON items(playlist_id,kind,category,title COLLATE NOCASE);
                 CREATE INDEX IF NOT EXISTS idx_items_tvg ON items(playlist_id,tvg_id);
+                -- SQLite appends rowid to ordinary indexes: this supports
+                -- bounded classification batches without sorting the playlist.
+                CREATE INDEX IF NOT EXISTS idx_items_playlist_rowid ON items(playlist_id);
                 CREATE TABLE IF NOT EXISTS football_events (
                     playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
                     channel_id TEXT NOT NULL, start TEXT NOT NULL, end TEXT,
@@ -370,7 +373,7 @@ class LibraryV2(Library):
             while True:
                 batch=db.execute("""SELECT rowid,key,title,url,group_name,kind,logo,
                     type_hint,tvg_id,category,series_name,season,episode
-                    FROM items WHERE playlist_id=? AND rowid>?
+                    FROM items INDEXED BY idx_items_playlist_rowid WHERE playlist_id=? AND rowid>?
                     ORDER BY rowid LIMIT 1200""",(playlist_id,cursor)).fetchall()
                 if not batch:
                     break
