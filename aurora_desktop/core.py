@@ -310,6 +310,11 @@ class Library:
             # stored URL key so favorites and playback progress still resolve.
             # Skip IDs that are duplicated in either snapshot.
             if merge:
+                # Reconciliation joins by provider ID and probes URL keys without
+                # playlist_id. The composite primary key cannot serve those probes.
+                # Build once per snapshot instead of repeatedly scanning staging.
+                db.execute("CREATE INDEX staging_source_id ON staging(xui_id) WHERE xui_id<>''")
+                db.execute("CREATE INDEX staging_key ON staging(key)")
                 db.execute("""UPDATE items SET xui_id=(
                     SELECT s.xui_id FROM staging s
                     WHERE s.playlist_id=items.playlist_id AND s.key=items.key)
@@ -319,11 +324,13 @@ class Library:
                 db.execute("""CREATE TEMP TABLE unambiguous_source_ids AS
                     SELECT xui_id FROM staging WHERE xui_id<>''
                     GROUP BY xui_id HAVING COUNT(*)=1""")
+                db.execute("CREATE UNIQUE INDEX source_ids_key ON unambiguous_source_ids(xui_id)")
                 db.execute("""CREATE TEMP TABLE key_remaps AS
                     SELECT s.key AS incoming_key, MIN(i.key) AS stable_key
                     FROM staging s JOIN unambiguous_source_ids u ON u.xui_id=s.xui_id
                     JOIN items i ON i.playlist_id=s.playlist_id AND i.xui_id=s.xui_id
-                    WHERE s.playlist_id=? AND i.key<>s.key
+                    WHERE s.playlist_id=? AND s.xui_id<>'' AND i.xui_id<>''
+                    AND i.key<>s.key
                     AND NOT EXISTS (SELECT 1 FROM staging active
                                     WHERE active.key=i.key)
                     GROUP BY s.key HAVING COUNT(*)=1""",(playlist_id,))
